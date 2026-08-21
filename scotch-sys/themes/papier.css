@@ -1,0 +1,7 @@
+/* Thème Papier — fond crème, blocs post-it avec ombre douce, serif */
+body { background-color: #f4f0e6 !important; }
+.sc-el.sc-bloc {
+  box-shadow: 2px 3px 8px rgba(80,60,20,.18);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.sc-el.sc-image { box-shadow: 2px 3px 10px rgba(80,60,20,.25); }

@@ -1,0 +1,5 @@
+# Config locale (identifiants) — copier settings.example.php pour démarrer
+settings.php
+
+# Contenu du site (pages, uploads) — pas versionné, reste local
+scotch-data/

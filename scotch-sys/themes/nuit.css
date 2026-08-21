@@ -1,0 +1,7 @@
+/* Thème Nuit — fond sombre, blocs lumineux */
+body { background-color: #0d0d12 !important; }
+.sc-el.sc-bloc {
+  box-shadow: 0 0 18px rgba(120,160,255,.25);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.sc-el.sc-bloc a { color: #8ab8ff; }

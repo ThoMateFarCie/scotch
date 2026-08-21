@@ -1,0 +1,16 @@
+/* Thème Cassette — lo-fi délavé, étiquettes, esprit mixtape */
+body { background-color: #e8e0d0 !important; }
+.sc-el.sc-bloc {
+  background-image: repeating-linear-gradient(0deg, transparent 0 22px, rgba(80,60,140,.12) 22px 23px);
+  border: 1px solid #b0a890;
+  box-shadow: 1px 2px 4px rgba(60,40,20,.25);
+  font-family: 'Comic Sans MS', 'Segoe Print', cursive;
+  transform: rotate(-0.6deg);
+}
+.sc-el.sc-bloc:nth-child(even) { transform: rotate(0.8deg); }
+.sc-el.sc-image {
+  border: 6px solid #fff;
+  border-bottom-width: 26px;
+  box-shadow: 2px 3px 8px rgba(60,40,20,.35);
+  filter: saturate(.75) contrast(.92) sepia(.15);
+}

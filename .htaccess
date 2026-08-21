@@ -1,0 +1,20 @@
+Options -Indexes
+
+# URLs propres : /about → index.php?url=about
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Ne pas réécrire les fichiers et dossiers existants
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+
+  # Réécriture : /pagename → index.php?url=pagename
+  RewriteRule ^([a-zA-Z0-9_-]+)/?$ index.php?url=$1 [L,QSA]
+</IfModule>
+
+# Protéger les fichiers sensibles
+<FilesMatch "\.(json|inc|bak|log)$">
+  Order deny,allow
+  Deny from all
+</FilesMatch>

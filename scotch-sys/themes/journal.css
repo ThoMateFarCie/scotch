@@ -1,0 +1,9 @@
+/* Thème Journal — noir & blanc, typo serif, bordures nettes */
+body { background-color: #fdfdfb !important; }
+.sc-el.sc-bloc {
+  background: #fff !important;
+  color: #111 !important;
+  border: 1.5px solid #111;
+  font-family: 'Times New Roman', Georgia, serif;
+}
+.sc-el.sc-image { border: 1.5px solid #111; filter: grayscale(1) contrast(1.1); }

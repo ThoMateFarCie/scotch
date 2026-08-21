@@ -1,0 +1,101 @@
+/* ── Reset minimal ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body   { margin: 0; padding: 0; font-family: sans-serif; }
+img    { max-width: 100%; height: auto; display: block; }
+
+/* ── Canvas ────────────────────────────────────────────── */
+main {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Effets au survol ──────────────────────────────────── */
+/* Actifs au survol chez le visiteur, ou via .sc-hover-on (preview éditeur) */
+.sc-el[class*="sc-hover-"] { transition: transform .25s ease, filter .25s ease, box-shadow .25s ease; }
+
+body:not(.sc-edit-mode) .sc-hover-grow:hover,   .sc-hover-grow.sc-hover-on   { transform: scale(1.08) !important; }
+body:not(.sc-edit-mode) .sc-hover-shrink:hover, .sc-hover-shrink.sc-hover-on { transform: scale(0.92) !important; }
+body:not(.sc-edit-mode) .sc-hover-tilt:hover,   .sc-hover-tilt.sc-hover-on   { transform: rotate(4deg) !important; }
+body:not(.sc-edit-mode) .sc-hover-invert:hover, .sc-hover-invert.sc-hover-on { filter: invert(1); }
+body:not(.sc-edit-mode) .sc-hover-glow:hover,   .sc-hover-glow.sc-hover-on   { box-shadow: 0 0 28px rgba(55,138,221,.75); }
+body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { animation: sc-wiggle .4s ease-in-out infinite; }
+
+@keyframes sc-wiggle {
+  0%, 100% { transform: rotate(-2deg); }
+  50%       { transform: rotate(2deg); }
+}
+
+/* ── Éléments positionnés ──────────────────────────────── */
+.sc-el {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+/* ── Mobile synthèse ───────────────────────────────────── */
+@media (max-width: 768px) {
+  #sc-canvas {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+  .sc-el {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 8px;
+    transform: none !important; /* annule les miroirs sur mobile */
+  }
+  .sc-el.sc-bloc { height: auto !important; } /* le texte dicte la hauteur */
+
+  /* Rôles mobiles */
+  .sc-el.sc-mob-hidden { display: none !important; }
+  .sc-el.sc-mob-bg {
+    position: absolute !important;
+    left: 0 !important; top: 0 !important;
+    width: 100% !important; height: 100% !important;
+    margin: 0 !important;
+    z-index: 0 !important;
+    padding: 0 !important;
+  }
+  .sc-el.sc-mob-bg img {
+    object-fit: cover !important;
+    max-height: none !important;
+    width: 100% !important; height: 100% !important;
+  }
+  /* Les blocs empilés passent devant le fond */
+  .sc-el:not(.sc-mob-bg) { z-index: 1; }
+  .sc-image img  { object-fit: contain; max-height: 60vw; }
+  .sc-iframe     { height: 56vw !important; } /* ratio 16/9 approx */
+}
+
+.sc-text  { min-width: 60px; min-height: 1em; }
+.sc-rect  { min-width: 20px; min-height: 20px; }
+.sc-image { line-height: 0; }
+.sc-image img { width: 100%; height: auto; }
+
+.sc-iframe { overflow: hidden; }
+.sc-iframe iframe { width: 100%; height: 100%; border: none; display: block; }
+
+.sc-file a { color: inherit; text-decoration: underline; }
+
+/* ── Bouton Modifier (admin connecté, mode visiteur) ───── */
+#sc-edit-hint {
+  position: fixed;
+  bottom: 16px; right: 16px;
+  background: rgba(26,26,46,.85);
+  color: #fff;
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+  transition: background .15s;
+}
+#sc-edit-hint:hover { background: rgba(26,26,46,1); }
