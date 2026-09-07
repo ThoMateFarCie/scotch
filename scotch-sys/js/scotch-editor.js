@@ -222,7 +222,8 @@ class ScotchEditor {
           const img = document.createElement('img');
           img.src = el.content.startsWith('http') ? el.content : this.base + el.content;
           img.alt = el.alt || ''; img.draggable = false;
-          img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;pointer-events:none';
+          const fit = el.style?.imgFit === 'contain' ? 'contain' : 'cover';
+          img.style.cssText = `width:100%;height:100%;object-fit:${fit};display:block;pointer-events:none`;
           dom.appendChild(img);
         } else {
           dom.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;flex-direction:column;gap:6px"><i class="ti ti-photo" style="font-size:2em"></i><span style="font-size:11px">Image</span></div>';
@@ -605,11 +606,28 @@ class ScotchEditor {
     };
 
     if (el.type==='image'||el.type==='file') {
+      const fit = s.imgFit === 'contain' ? 'contain' : 'cover';
+      const fitRow = el.type==='image' ? `
+        <div class="sc-pop-row sc-pop-sep"><span class="sc-pop-label">cadrage de l'image</span>
+          <div style="display:flex;gap:4px">
+            <button id="psi-fit-cover" class="sc-rep-btn${fit==='cover'?' on':''}" style="flex:1">Remplir</button>
+            <button id="psi-fit-contain" class="sc-rep-btn${fit==='contain'?' on':''}" style="flex:1">Tout montrer</button>
+          </div></div>` : '';
       pop.innerHTML = `
         <p class="sc-pop-title">Style</p>
         <div class="sc-pop-row"><button id="psi-change" style="width:100%;padding:7px;background:#378ADD;color:#fff;border:none;cursor:pointer;font-size:12px">
-          <i class="ti ti-upload"></i> Changer ${el.type==='image'?'l\'image':'le fichier'}…</button></div>${opSlider}${this._hoverSectionHtml(el)}`;
+          <i class="ti ti-upload"></i> Changer ${el.type==='image'?'l\'image':'le fichier'}…</button></div>${fitRow}${opSlider}${this._hoverSectionHtml(el)}`;
       pop.querySelector('#psi-change').addEventListener('click', () => { this._closePop(); this._showUpload(el.type, el.pos.x, el.pos.y, el); });
+      if (el.type==='image') {
+        const setFit = v => {
+          if(!el.style)el.style={}; el.style.imgFit=v;
+          pop.querySelector('#psi-fit-cover').classList.toggle('on', v==='cover');
+          pop.querySelector('#psi-fit-contain').classList.toggle('on', v==='contain');
+          this._buildContent(dom, el); this._dirty(); this._push();
+        };
+        pop.querySelector('#psi-fit-cover').addEventListener('click', () => setFit('cover'));
+        pop.querySelector('#psi-fit-contain').addEventListener('click', () => setFit('contain'));
+      }
       this._bindHoverSection(pop, el, dom);
       bindOp(); return;
     }

@@ -93,7 +93,8 @@ foreach ($desktop as $el):
                     ENT_QUOTES
                 );
                 $alt = htmlspecialchars($el['alt'] ?? '', ENT_QUOTES);
-                $content_html = "<img src=\"{$src}\" alt=\"{$alt}\" style=\"width:100%;height:100%;object-fit:cover;display:block\" loading=\"lazy\">";
+                $fit = ($s['imgFit'] ?? '') === 'contain' ? 'contain' : 'cover';
+                $content_html = "<img src=\"{$src}\" alt=\"{$alt}\" style=\"width:100%;height:100%;object-fit:{$fit};display:block\" loading=\"lazy\">";
             }
             break;
         case 'file':

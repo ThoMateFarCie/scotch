@@ -212,11 +212,15 @@ $switcher_on = !empty($site['themeSwitcher']) && !$edit_mode;
     </div>
     <label>Image de fond de page</label>
     <div id="sc-bg-zone" style="margin-bottom:8px"></div>
-    <label>CSS personnalisé</label>
-    <textarea id="sc-meta-css" rows="5" style="font-family:monospace;font-size:11px"><?= htmlspecialchars($page_data['meta']['css']??'') ?></textarea>
-    <button id="sc-settings-apply">Appliquer</button>
+    <div class="sc-css-zone sc-css-zone-page">
+      <label>CSS de cette page uniquement — « <?= htmlspecialchars($slug) ?> »</label>
+      <textarea id="sc-meta-css" rows="5" style="font-family:monospace;font-size:11px"><?= htmlspecialchars($page_data['meta']['css']??'') ?></textarea>
+      <p class="sc-css-hint">S'ajoute au CSS global du site (ci-dessous) et peut le surcharger. N'affecte que « <?= htmlspecialchars($slug) ?> ».</p>
+      <button id="sc-settings-apply">Appliquer à « <?= htmlspecialchars($slug) ?> »</button>
+    </div>
 
     <h3 style="padding:14px 0 6px;margin:8px -14px 0;font-size:10px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #f0f0f0;padding-left:14px">Site entier</h3>
+    <div class="sc-css-zone sc-css-zone-site">
     <label>Thème</label>
     <select id="sc-site-theme" style="width:100%;padding:5px 8px;background:#f8f8f8;border:1px solid #e0e0e0;color:#222;font-size:12px;outline:none;margin-bottom:8px">
       <option value="">— aucun (brut) —</option>
@@ -224,14 +228,16 @@ $switcher_on = !empty($site['themeSwitcher']) && !$edit_mode;
       <option value="<?= htmlspecialchars($t,ENT_QUOTES) ?>" <?= ($site['theme']??'')===$t?'selected':'' ?>><?= htmlspecialchars(ucfirst($t)) ?></option>
       <?php endforeach ?>
     </select>
-    <label>CSS global (toutes les pages)</label>
+    <label>CSS global — appliqué à TOUTES les pages du site</label>
     <textarea id="sc-site-css" rows="5" style="font-family:monospace;font-size:11px"><?= htmlspecialchars($site['css']??'') ?></textarea>
+    <p class="sc-css-hint">Concerne l'ensemble du site, pas seulement « <?= htmlspecialchars($slug) ?> ».</p>
     <label>JS global (visiteurs uniquement)</label>
     <textarea id="sc-site-js" rows="5" style="font-family:monospace;font-size:11px" placeholder="// exécuté sur chaque page, côté visiteur"><?= htmlspecialchars($site['js']??'') ?></textarea>
     <div class="sc-chk-row">
       <label><input type="checkbox" id="sc-site-switcher" <?= !empty($site['themeSwitcher'])?'checked':'' ?>> Les visiteurs peuvent changer de thème</label>
     </div>
-    <button id="sc-site-apply">Appliquer au site</button>
+    <button id="sc-site-apply">Appliquer à TOUT le site</button>
+    </div>
     <h3 style="padding:12px 0 6px;margin:0;font-size:11px;font-weight:500;color:#555;text-transform:uppercase;letter-spacing:.05em">
       Polices <span id="sc-fonts-count"><?= count($page_data['meta']['fonts']??[]) ?> police(s)</span>
     </h3>

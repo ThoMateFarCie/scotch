@@ -313,6 +313,16 @@ body:not(.sc-mobile-view) .sc-el.sc-mob-bg::after { content:'📱🖼'; }
 .sc-settings-body textarea { resize:vertical; }
 .sc-settings-body input:focus,.sc-settings-body textarea:focus { border-color:#378ADD; }
 .sc-chk-row label { display:flex;align-items:center;gap:6px;font-size:11px;color:#555;cursor:pointer;margin-bottom:6px; }
+
+/* Zones CSS page / site : fond teinté pour qu'on ne les confonde jamais,
+   même après avoir défilé et perdu le repère du titre du panneau */
+.sc-css-zone { border-radius:4px;padding:10px 10px 4px;margin:0 0 10px; }
+.sc-css-zone label { color:inherit !important;opacity:.75; }
+.sc-css-zone-page { background:#EFFBF6;border:1px solid #bfe8d9; }
+.sc-css-zone-page label { color:#0F6E56 !important; }
+.sc-css-zone-site { background:#EFF6FF;border:1px solid #bfd8f5;padding-top:10px; }
+.sc-css-zone-site label { color:#185FA5 !important; }
+.sc-css-hint { font-size:10px;color:#888;line-height:1.4;margin:-4px 0 10px; }
 #sc-settings-apply {
   width:100%;padding:7px;background:#0F6E56;color:#fff;border:none;cursor:pointer;font-size:12px;margin-top:4px;
 }

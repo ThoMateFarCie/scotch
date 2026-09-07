@@ -52,6 +52,7 @@ body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { a
     transform: none !important; /* annule les miroirs sur mobile */
   }
   .sc-el.sc-bloc { height: auto !important; } /* le texte dicte la hauteur */
+  .sc-el.sc-image { height: auto !important; } /* l'image dicte sa propre hauteur, plus de bandeau écrasé */
 
   /* Rôles mobiles */
   .sc-el.sc-mob-hidden { display: none !important; }
@@ -70,7 +71,10 @@ body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { a
   }
   /* Les blocs empilés passent devant le fond */
   .sc-el:not(.sc-mob-bg) { z-index: 1; }
-  .sc-image img  { object-fit: contain; max-height: 60vw; }
+  /* !important nécessaire : le cadrage "Remplir" posé en ligne (par défaut,
+     ou choisi par l'auteur pour le bureau) gagnerait sinon sur ce contain —
+     sur mobile on veut toujours voir l'image entière, jamais rognée */
+  .sc-image img  { object-fit: contain !important; max-height: 60vw; }
   .sc-iframe     { height: 56vw !important; } /* ratio 16/9 approx */
 }
 

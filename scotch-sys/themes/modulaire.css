@@ -1,4 +1,5 @@
 /* Thème Modulaire — panneaux eurorack, vis, câbles de patch (via modulaire.js) */
+@import url('https://fonts.googleapis.com/css2?family=Martian+Mono:wght,wdth@700,75&display=swap');
 body {
   background:
     repeating-linear-gradient(0deg, #1c1d21 0px, #1c1d21 118px, #0b0b0d 118px, #0b0b0d 126px) !important;
@@ -7,9 +8,11 @@ body {
   background-color: #d8d5cc;
   border: 1px solid #55565c;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 2px 6px rgba(0,0,0,.5);
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   letter-spacing: .02em;
   color: #1a1a1e;
+  white-space: pre-wrap;   /* les retours à la ligne doivent rester visibles même
+                               avant que le bloc soit reconnu comme "codé" */
 }
 
 .sc-el.sc-image, .sc-el.sc-iframe {
@@ -204,7 +207,7 @@ body.sc-rack-hidden .sc-module {
 }
 .sc-zoom-ctrl button {
   background: #2b2d34; border: none; color: #cfd0d4;
-  font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 15px; font-weight: 700;
   width: 34px; height: 30px; cursor: pointer;
   transition: background .12s;
 }
@@ -235,45 +238,43 @@ body.sc-rack-hidden .sc-module {
 /* Panneau d'animation — apparaît quand le bloc est sélectionné */
 .sc-anim-panel {
   position: absolute;
-  top: 100%; left: 0; margin-top: 6px;
-  width: max-content; max-width: 240px;
-  background: #2b2d34;
-  border: 1px solid #15161a;
+  top: 100%; left: 0; margin-top: 32px;   /* sous la barrette de jacks (26px), pas dessus */
+  width: max-content; max-width: 170px;
+  background: linear-gradient(#4a4b52, #33343a);
+  border: 1px solid #1c1d21;
   border-radius: 6px;
-  padding: 8px 9px;
+  padding: 6px 8px;
   z-index: 40;
   display: none;
-  box-shadow: 0 6px 18px rgba(0,0,0,.45);
-  font-family: 'Helvetica Neue', Arial, sans-serif;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+  font-family: 'Martian Mono', 'Courier New', monospace;
 }
 .sc-anim-panel.visible { display: block; }
-.sc-anim-title {
-  font-size: 8px; letter-spacing: .16em; text-transform: uppercase;
-  color: #8a8478; margin-bottom: 6px;
-}
-.sc-anim-moves { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.sc-anim-moves { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .sc-anim-move {
-  padding: 4px 7px;
-  background: #3a3d46; border: 1px solid #22242b; color: #cfd0d4;
-  font-size: 10px; border-radius: 4px; cursor: pointer;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: #17181c; border: 1px solid #0c0d10; color: #8a8f9c;
+  font-size: 12px; line-height: 1; cursor: pointer;
 }
-.sc-anim-move:hover { background: #464a55; color: #fff; }
-.sc-anim-move.on { background: #4a90d0; border-color: #2f6ba0; color: #fff; }
-.sc-anim-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 9px; color: #a8a8a8; margin-top: 5px;
-  text-transform: uppercase; letter-spacing: .08em;
+.sc-anim-move:hover { color: #fff; box-shadow: 0 0 7px rgba(240,192,48,.5); }
+.sc-anim-move.on {
+  color: #f0c030; text-shadow: 0 0 6px rgba(240,192,48,.8);
+  box-shadow: inset 0 0 0 1px rgba(240,192,48,.6);
 }
+.sc-anim-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.sc-anim-ico { font-size: 11px; color: #8a8f9c; width: 13px; text-align: center; flex-shrink: 0; }
 .sc-anim-row input[type=range] {
-  flex: 1; max-width: 130px; height: 4px; cursor: pointer;
-  accent-color: #4a90d0;
+  flex: 1; max-width: 110px; height: 4px; cursor: pointer;
+  accent-color: #f0c030;
 }
 
 /* ── Module GÉNÉRATEUR ── */
 #sc-gen-melo, #sc-gen-ryth {
   display: block; width: 100%; margin: 0 0 5px; padding: 5px;
   background: #3a3f4a; border: 1px solid #22262e; color: #cfd8e0;
-  font-family: 'Courier New', monospace; font-size: 10px; font-weight: 700;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 10px; font-weight: 700;
   letter-spacing: .08em; cursor: pointer;
 }
 #sc-gen-melo:hover { background: #46506a; color: #b0d0ff; }
@@ -283,6 +284,16 @@ body.sc-rack-hidden .sc-module {
   font-size: 7.5px; letter-spacing: .06em; text-transform: uppercase;
   color: #8a8478; text-align: center; margin-top: 2px;
 }
+
+/* ── Module IMAGE ── */
+#sc-img-load {
+  display: block; width: 100%; margin: 0 0 5px; padding: 5px;
+  background: #3a3f4a; border: 1px solid #22262e; color: #cfd8e0;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; cursor: pointer;
+}
+#sc-img-load:hover { background: #46506a; color: #b0d0ff; }
+#sc-img-load:active { transform: translateY(1px); }
 
 /* ── Module CARREFOUR ── */
 .sc-turn-ins {
@@ -303,7 +314,7 @@ body.sc-rack-hidden .sc-module {
 .sc-turn-dens, .sc-turn-div { display: flex; gap: 4px; justify-content: center; }
 .sc-turn-dbtn, .sc-turn-vbtn {
   flex: 1; padding: 3px; background: #45464c; border: 1px solid #2a2b30;
-  color: #cfd0d4; font-family: 'Courier New', monospace; font-size: 10px;
+  color: #cfd0d4; font-family: 'Martian Mono', 'Courier New', monospace; font-size: 10px;
   font-weight: 700; cursor: pointer;
 }
 .sc-turn-dbtn:hover, .sc-turn-vbtn:hover { background: #55565c; color: #fff; }
@@ -326,16 +337,11 @@ body.sc-rack-hidden .sc-module {
 .sc-bar-btn {
   width: 26px; height: 24px;
   background: #45464c; border: 1px solid #2a2b30; color: #cfd0d4;
-  font-family: 'Courier New', monospace; font-size: 12px; font-weight: 700;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 12px; font-weight: 700;
   cursor: pointer;
 }
 .sc-bar-btn:hover { background: #55565c; color: #fff; }
 .sc-bar-btn.on { background: #30b060; border-color: #1f7a3d; color: #fff; }
-.sc-bar-lbl {
-  font-size: 8px; letter-spacing: .1em; text-transform: uppercase;
-  color: #8a8478; text-align: center;
-}
-
 /* Points de mesure : où on en est dans la mesure courante, et quand un
    mute/démute en attente va tomber (1er point, en orange) */
 .sc-bar-dots { display: flex; gap: 5px; justify-content: center; margin-top: 7px; }
@@ -350,7 +356,7 @@ body.sc-rack-hidden .sc-module {
 .sc-bar-dot.sc-bar-dot-hit { background: #e06030; box-shadow: 0 0 10px rgba(224,96,48,.95); }
 
 .sc-el.sc-coding {
-  font-family: 'Courier New', monospace; /* défaut mono — le choix Style du bloc gagne */
+  font-family: 'Martian Mono', 'Courier New', monospace; /* défaut mono — le choix Style du bloc gagne */
   white-space: pre-wrap;
   line-height: 1.5;
 }
@@ -399,7 +405,7 @@ body.sc-rack-hidden .sc-module {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 4px 14px rgba(0,0,0,.55);
   padding: 10px 14px 12px;
   width: 168px;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   user-select: none;
 }
 .sc-mini {
@@ -563,7 +569,7 @@ body.sc-rack-hidden .sc-module {
   background: #45464c;
   border: 1px solid #2a2b30;
   color: #cfd0d4;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: .06em;
@@ -581,7 +587,7 @@ body.sc-rack-hidden .sc-module {
   background: #3a3b41;
   border: 1px solid #2a2b30;
   color: #b0b1b6;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: .1em;
@@ -598,7 +604,7 @@ body.sc-rack-hidden .sc-module {
   background: #2f4a3a;
   border: 1px solid #1c2a22;
   color: #a0d8bc;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -610,7 +616,7 @@ body.sc-rack-hidden .sc-module {
 #sc-synth-clean {
   display: block; width: 100%; margin: 0 0 6px; padding: 4px;
   background: #33384a; border: 1px solid #1c202a; color: #a8b4d8;
-  font-family: 'Courier New', monospace; font-size: 8.5px; font-weight: 700;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 8.5px; font-weight: 700;
   letter-spacing: .08em; cursor: pointer;
 }
 #sc-synth-clean:hover { background: #3e4560; color: #c8d4ff; }
@@ -619,7 +625,7 @@ body.sc-rack-hidden .sc-module {
 #sc-synth-anim-reset {
   display: block; width: 100%; margin: 0 0 6px; padding: 4px;
   background: #3a2f4a; border: 1px solid #201c2a; color: #c0a8d8;
-  font-family: 'Courier New', monospace; font-size: 8.5px; font-weight: 700;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 8.5px; font-weight: 700;
   letter-spacing: .08em; cursor: pointer;
 }
 #sc-synth-anim-reset:hover { background: #46385c; color: #dcc8ff; }
@@ -633,7 +639,7 @@ body.sc-rack-hidden .sc-module {
   background: #4a2f2f;
   border: 1px solid #2a1c1c;
   color: #d8a0a0;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -641,6 +647,15 @@ body.sc-rack-hidden .sc-module {
 }
 #sc-synth-clear:hover { background: #5c3838; color: #ffc0c0; }
 #sc-synth-clear:active { background: #3a2424; }
+
+/* Module CARREFOUR : coupe uniquement les câbles d'effet, garde la nappe */
+#sc-turn-fxcut {
+  background: #4a2f2f; border: 1px solid #2a1c1c; color: #d8a0a0;
+  font-family: 'Martian Mono', 'Courier New', monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; padding: 4px; cursor: pointer;
+}
+#sc-turn-fxcut:hover { background: #5c3838; color: #ffc0c0; }
+#sc-turn-fxcut:active { background: #3a2424; }
 
 /* Croix de suppression d'un bloc (visiteur) */
 .sc-block-del {
@@ -674,7 +689,7 @@ body.sc-rack-hidden .sc-module {
   border: 1px solid #55565c;
   box-shadow: 0 8px 40px rgba(0,0,0,.6);
   color: #d8d5cc;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.5;
   padding: 22px 24px;
@@ -712,7 +727,7 @@ body.sc-rack-hidden .sc-module {
   transform: translateX(-50%) translateY(20px);
   background: #1a1a2e;
   color: #7dd8a8;
-  font-family: 'Courier New', monospace;
+  font-family: 'Martian Mono', 'Courier New', monospace;
   font-size: 12px;
   padding: 9px 18px;
   border: 1px solid #7dd8a8;
@@ -761,6 +776,27 @@ body.sc-rack-hidden .sc-module {
   background: #f0c030;
   border-radius: 2px;
   pointer-events: none;
+}
+
+/* Module TEMPO : lecture/écriture du BPM au chiffre */
+.sc-bpm-row {
+  display: flex; align-items: baseline; justify-content: center;
+  gap: 4px; margin-top: 8px;
+}
+.sc-bpm-row input {
+  width: 42px;
+  background: #2e2f34;
+  border: 1px solid #1c1d21;
+  color: #f0c030;
+  font-family: 'Martian Mono', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  padding: 2px 0;
+}
+.sc-bpm-row input:focus { outline: 1px solid #f0c030; }
+.sc-bpm-row span {
+  font-size: 8px; font-weight: 700; letter-spacing: .08em; color: #45464c;
 }
 
 /* Masquer le synthé sur mobile (le jouet est desktop) */
