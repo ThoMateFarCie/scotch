@@ -1,5 +1,9 @@
 <?php
 
+// scotch-data/ n'est pas forcément présent (dépôt git propre, premier
+// déploiement…) : la CMS doit pouvoir démarrer et écrire dedans quand même.
+if (!is_dir(SCOTCH_DATA)) @mkdir(SCOTCH_DATA, 0775, true);
+
 // ── URL helpers ────────────────────────────────────────────
 
 function sc_base_url() {

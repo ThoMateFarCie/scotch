@@ -2,4 +2,6 @@
 settings.php
 
 # Contenu du site (pages, uploads) — pas versionné, reste local
-scotch-data/
+# (le dossier lui-même est gardé, vide, via scotch-data/.gitkeep)
+scotch-data/*
+!scotch-data/.gitkeep
