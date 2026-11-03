@@ -359,7 +359,7 @@ function sc_seed_starter() {
     $marker = SCOTCH_DATA . '_starter.done';
     if (file_exists($marker)) return;
     foreach (glob(SCOTCH_DATA . '*', GLOB_ONLYDIR) ?: [] as $d) {
-        if (file_exists($d . '/page.json')) { @file_put_contents($marker, '1'); return; }
+        if (file_exists($d . '/page.json')) return;
     }
     $src = SCOTCH_SYS . 'starter/page.json';
     if (!file_exists($src)) return;
