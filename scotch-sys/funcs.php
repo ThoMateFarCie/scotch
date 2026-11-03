@@ -349,3 +349,21 @@ function sc_rmdir($dir) {
     }
     rmdir($dir);
 }
+
+// ── Page de démarrage (premier lancement) ─────────────────
+
+// Sur une installation vide (aucune page), crée la page "index" à partir
+// de scotch-sys/starter/page.json. Ne s'exécute qu'une fois : le marqueur
+// empêche de la recréer si l'auteur la supprime plus tard.
+function sc_seed_starter() {
+    $marker = SCOTCH_DATA . '_starter.done';
+    if (file_exists($marker)) return;
+    foreach (glob(SCOTCH_DATA . '*', GLOB_ONLYDIR) ?: [] as $d) {
+        if (file_exists($d . '/page.json')) { @file_put_contents($marker, '1'); return; }
+    }
+    $src = SCOTCH_SYS . 'starter/page.json';
+    if (!file_exists($src)) return;
+    $dir = SCOTCH_DATA . 'index';
+    if (!is_dir($dir . '/files')) @mkdir($dir . '/files', 0775, true);
+    if (@copy($src, $dir . '/page.json')) @file_put_contents($marker, '1');
+}

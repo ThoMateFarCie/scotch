@@ -24,6 +24,7 @@ $slug      = sc_slug($_GET['url']??'index') ?: 'index';
 $edit_mode = isset($_GET['edit']) && $logged;
 $want_edit = isset($_GET['edit']);
 $base_url  = sc_base_url();
+sc_seed_starter();
 $page_data = sc_load_page($slug);
 $nav_pages = sc_list_pages();
 if (!$page_data) $edit_mode = false;   // page à créer : écran dédié, sans éditeur

@@ -1,0 +1,76 @@
+{
+    "page": "index",
+    "meta": {
+        "title": "Bienvenue dans Scotch",
+        "desc": "",
+        "css": "",
+        "in_nav": true,
+        "do_index": true
+    },
+    "elements": [
+        {
+            "id": "el_start_01", "type": "bloc",
+            "content": "<b>Bienvenue dans Scotch</b><br>Un CMS où tu poses tes éléments où tu veux, comme sur une feuille. Cette page est un mini-tuto : fais-la évoluer, puis supprime ces blocs.",
+            "pos": {"x": 40, "y": 30}, "size": {"w": 880, "h": 110}, "z": 1,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#ffd966", "fontSize": 22}
+        },
+        {
+            "id": "el_start_02", "type": "bloc",
+            "content": "<b>1 · Passer en édition</b><br>Ajoute <b>?edit</b> à l'adresse de la page, puis connecte-toi. Les identifiants sont dans <b>settings.php</b> (copie <b>settings.example.php</b> et change le mot de passe !).",
+            "pos": {"x": 40, "y": 170}, "size": {"w": 280, "h": 170}, "z": 2,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#f5c2d1", "fontSize": 14}
+        },
+        {
+            "id": "el_start_03", "type": "bloc",
+            "content": "<b>2 · Créer</b><br>Double-clique sur le fond pour créer un bloc : texte coloré, image, vidéo ou fichier. Double-clique sur un bloc de texte pour écrire dedans.",
+            "pos": {"x": 340, "y": 170}, "size": {"w": 280, "h": 170}, "z": 3,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#a8d8a8", "fontSize": 14}
+        },
+        {
+            "id": "el_start_04", "type": "bloc",
+            "content": "<b>3 · Déplacer</b><br>Glisse un bloc pour le déplacer, tire son coin en bas à droite pour le redimensionner. Les flèches du clavier le décalent (avec Maj, par 10). <b>G</b> active la grille magnétique.",
+            "pos": {"x": 640, "y": 170}, "size": {"w": 280, "h": 170}, "z": 4,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#a8c8f8", "fontSize": 14}
+        },
+        {
+            "id": "el_start_05", "type": "bloc",
+            "content": "<b>4 · Mettre en forme</b><br>Sélectionne un bloc : une barre d'outils apparaît pour sa couleur, sa police, son alignement, son opacité, son lien, sa position devant/derrière et son verrou.",
+            "pos": {"x": 40, "y": 370}, "size": {"w": 280, "h": 170}, "z": 5,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#d4b8f0", "fontSize": 14}
+        },
+        {
+            "id": "el_start_06", "type": "bloc",
+            "content": "<b>5 · Pages et réglages</b><br>Le bouton <b>pages</b> crée, ouvre et supprime tes pages. Les <b>réglages</b> donnent le titre, le thème, le CSS de la page ou du site, les polices et le mode brouillon.",
+            "pos": {"x": 340, "y": 370}, "size": {"w": 280, "h": 170}, "z": 6,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#f8c8a8", "fontSize": 14}
+        },
+        {
+            "id": "el_start_07", "type": "bloc",
+            "content": "<b>6 · Version mobile</b><br>Sur téléphone, les blocs s'empilent. Appuie sur <b>M</b> dans l'éditeur pour voir ce rendu et choisir l'ordre, ou cacher un bloc sur mobile.",
+            "pos": {"x": 640, "y": 370}, "size": {"w": 280, "h": 170}, "z": 7,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#d0d0d0", "fontSize": 14}
+        },
+        {
+            "id": "el_start_08", "type": "bloc",
+            "content": "<b>7 · Enregistrer</b><br><b>Ctrl+S</b> sauvegarde, <b>Ctrl+Z</b> annule. Quand tu as compris, supprime ces blocs (touche Suppr) et fais ta page.",
+            "pos": {"x": 40, "y": 570}, "size": {"w": 580, "h": 100}, "z": 8,
+            "locked": false, "hidden": false, "global": false, "link": "", "anchor": "",
+            "style": {"bg": "#ffd966", "fontSize": 14}
+        },
+        {
+            "id": "el_start_09", "type": "bloc",
+            "content": "<b>Le code et la doc →</b>",
+            "pos": {"x": 640, "y": 570}, "size": {"w": 280, "h": 100}, "z": 9,
+            "locked": false, "hidden": false, "global": false,
+            "link": "https://github.com/ThoMateFarCie/scotch", "linkTarget": "_blank", "anchor": "",
+            "style": {"bg": "#1a1a2e", "color": "#ffffff", "fontSize": 16, "alignH": "center", "alignV": "middle"}
+        }
+    ]
+}
