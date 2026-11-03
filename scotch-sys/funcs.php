@@ -1,9 +1,5 @@
 <?php
 
-// scotch-data/ n'est pas forcément présent (dépôt git propre, premier
-// déploiement…) : la CMS doit pouvoir démarrer et écrire dedans quand même.
-if (!is_dir(SCOTCH_DATA)) @mkdir(SCOTCH_DATA, 0775, true);
-
 // ── URL helpers ────────────────────────────────────────────
 
 function sc_base_url() {
@@ -30,9 +26,17 @@ function sc_slug($str) {
 
 function sc_site_path() { return SCOTCH_DATA . '_site.json'; }
 
+// Version d'un fichier de scotch-sys pour l'URL (?v=) : change à chaque modification,
+// le navigateur ne garde donc jamais un ancien CSS/JS en cache
+function sc_asset_v($rel) {
+    $t = @filemtime(SCOTCH_SYS . $rel);
+    return SCOTCH_VERSION . ($t ? '.' . $t : '');
+}
+
 function sc_load_site() {
     $p = sc_site_path();
-    $def = ['theme'=>'', 'css'=>'', 'js'=>'', 'themeSwitcher'=>false, 'fonts'=>[]];
+    $def = ['theme'=>'', 'css'=>'', 'js'=>'', 'themeSwitcher'=>false, 'fonts'=>[],
+            'center'=>true, 'palette'=>[], 'paletteOnly'=>false, 'font'=>''];
     if (!file_exists($p)) return $def;
     $d = json_decode(file_get_contents($p), true);
     return is_array($d) ? array_merge($def, $d) : $def;
@@ -47,12 +51,23 @@ function sc_save_site($data) {
         elseif (($f['type'] ?? '') === 'upload' && !empty($f['url']))
             $fonts[] = ['type'=>'upload', 'family'=>(string)$f['family'], 'url'=>(string)$f['url']];
     }
+    // Palette : couleurs hexa #rrggbb, sans doublon
+    $palette = [];
+    foreach (($data['palette'] ?? []) as $c) {
+        $c = strtolower(trim((string)$c));
+        if (preg_match('/^#[0-9a-f]{6}$/', $c) && !in_array($c, $palette)) $palette[] = $c;
+    }
     $clean = [
         'theme'         => preg_replace('/[^a-z0-9_-]/i', '', $data['theme'] ?? ''),
         'css'           => (string)($data['css'] ?? ''),
         'js'            => (string)($data['js'] ?? ''),
         'themeSwitcher' => !empty($data['themeSwitcher']),
         'fonts'         => $fonts,
+        'center'        => !array_key_exists('center', $data) || !empty($data['center']),
+        'palette'       => array_slice($palette, 0, 32),
+        'paletteOnly'   => !empty($data['paletteOnly']),
+        // police par défaut : nom de famille seul (pas de guillemets, accolades…)
+        'font'          => trim(preg_replace('/[^\p{L}\p{N} _.-]/u', '', (string)($data['font'] ?? ''))),
     ];
     return file_put_contents(
         sc_site_path(),
@@ -184,9 +199,10 @@ function sc_create_page($slug) {
     $slug = sc_slug($slug);
     if (!sc_valid_slug($slug)) return false;
     $dir = SCOTCH_DATA . $slug;
-    if (is_dir($dir)) return false;
-    mkdir($dir, 0775, true);
-    mkdir($dir . '/files', 0775, true);
+    // la page existe si son page.json existe (un dossier vide restant ne bloque plus la création)
+    if (file_exists($dir . '/page.json')) return false;
+    if (!is_dir($dir)) mkdir($dir, 0775, true);
+    if (!is_dir($dir . '/files')) mkdir($dir . '/files', 0775, true);
     $data = [
         'page'     => $slug,
         'meta'     => ['title' => $slug, 'desc' => '', 'css' => '', 'in_nav' => true, 'do_index' => true],
@@ -214,6 +230,7 @@ function sc_list_pages() {
             'slug'   => $slug,
             'title'  => $d['meta']['title'] ?? $slug,
             'in_nav' => $d['meta']['in_nav'] ?? true,
+            'published' => ($d['meta']['published'] ?? true) !== false,
         ];
     }
     return $pages;
@@ -260,16 +277,47 @@ function sc_list_uploaded_fonts() {
 
 // ── Upload ────────────────────────────────────────────────
 
+// Formats acceptés à l'upload (partagés avec l'éditeur pour prévenir avant l'envoi)
+function sc_upload_allowed() {
+    return ['jpg','jpeg','png','gif','webp','svg','pdf','mp3','mp4','zip','txt','woff','woff2','ttf','otf'];
+}
+
+// Valeur php.ini (« 40M », « 2G »…) → octets
+function sc_ini_bytes($v) {
+    $v = trim((string)$v); $n = (float)$v;
+    switch (strtolower(substr($v, -1))) { case 'g': $n *= 1024; case 'm': $n *= 1024; case 'k': $n *= 1024; }
+    return (int)$n;
+}
+
+// Taille maximale réellement acceptée par le serveur (la plus petite des deux limites PHP)
+function sc_upload_max() {
+    $a = sc_ini_bytes(ini_get('upload_max_filesize'));
+    $b = sc_ini_bytes(ini_get('post_max_size'));
+    return min(array_filter([$a, $b]) ?: [0]);
+}
+
+function sc_upload_error_msg($code) {
+    $mo = round(sc_upload_max() / 1048576, 1);
+    return [
+        UPLOAD_ERR_INI_SIZE  => "Fichier trop lourd : le serveur accepte au maximum {$mo} Mo",
+        UPLOAD_ERR_FORM_SIZE => "Fichier trop lourd : le serveur accepte au maximum {$mo} Mo",
+        UPLOAD_ERR_PARTIAL   => "Envoi interrompu, réessaie",
+        UPLOAD_ERR_NO_FILE   => "Aucun fichier reçu",
+        UPLOAD_ERR_NO_TMP_DIR=> "Dossier temporaire du serveur manquant",
+        UPLOAD_ERR_CANT_WRITE=> "Écriture impossible sur le serveur",
+    ][$code] ?? "Erreur d'envoi ({$code})";
+}
+
 function sc_handle_upload($slug) {
-    $allowed = ['jpg','jpeg','png','gif','webp','svg','pdf','mp3','mp4','zip','txt','woff','woff2','ttf','otf'];
+    $allowed = sc_upload_allowed();
     if (empty($_FILES['file'])) return ['ok' => false, 'error' => 'Aucun fichier'];
     if (!sc_valid_slug($slug))  return ['ok' => false, 'error' => 'Page invalide'];
 
     $file = $_FILES['file'];
-    if ($file['error'] !== UPLOAD_ERR_OK) return ['ok' => false, 'error' => 'Erreur upload '.$file['error']];
+    if ($file['error'] !== UPLOAD_ERR_OK) return ['ok' => false, 'error' => sc_upload_error_msg($file['error'])];
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $allowed)) return ['ok' => false, 'error' => 'Type de fichier non autorisé'];
+    if (!in_array($ext, $allowed)) return ['ok' => false, 'error' => 'Format non accepté (.' . $ext . ')'];
 
     $dir = SCOTCH_DATA . $slug . '/files/';
     if (!is_dir($dir)) mkdir($dir, 0775, true);

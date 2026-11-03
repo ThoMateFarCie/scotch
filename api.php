@@ -10,6 +10,14 @@ header('X-Content-Type-Options: nosniff');
 
 $logged = sc_is_logged();
 
+/* ── Envoi plus gros que post_max_size : PHP vide tout, on le dit clairement ── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_FILES) && empty($_POST)
+    && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > sc_upload_max()) {
+    echo json_encode(['ok'=>false,'error'=>'Fichier trop lourd : le serveur accepte au maximum '
+        . round(sc_upload_max() / 1048576, 1) . ' Mo']);
+    exit;
+}
+
 /* ── Upload fichier (multipart) ─────────────────────────── */
 if (!empty($_FILES['file'])) {
     if (!$logged) { echo json_encode(['ok'=>false,'error'=>'Non autorisé']); exit; }
@@ -92,6 +100,15 @@ switch ($action) {
             if ($x['family'] === $fam) { echo json_encode(['ok'=>true]); break 2; }
         }
         $site['fonts'][] = $f;
+        echo json_encode(['ok' => sc_save_site($site)]);
+        break;
+
+    case 'remove_site_font':
+        // retire la police de la liste du site (le fichier reste dans _fonts/)
+        $site = sc_load_site();
+        $fam  = (string)($req['family'] ?? '');
+        $site['fonts'] = array_values(array_filter($site['fonts'], fn($x) => ($x['family'] ?? '') !== $fam));
+        if (($site['font'] ?? '') === $fam) $site['font'] = '';
         echo json_encode(['ok' => sc_save_site($site)]);
         break;
 

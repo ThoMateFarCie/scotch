@@ -1,7 +1,14 @@
 /* ── Reset minimal ─────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
-body   { margin: 0; padding: 0; font-family: sans-serif; }
+body   {
+  margin: 0; padding: 0; font-family: sans-serif;
+  /* Rendu typo homogène : sans ça macOS (Safari, Chrome, Firefox) épaissit
+     le texte, surtout clair sur fond sombre, et il paraît en gras */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-size-adjust: 100%; -webkit-text-size-adjust: 100%;
+}
 img    { max-width: 100%; height: auto; display: block; }
 
 /* ── Canvas ────────────────────────────────────────────── */
@@ -9,6 +16,11 @@ main {
   position: relative;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Centrage de la composition sur grand écran (--sc-cx = milieu des éléments, calculé côté PHP) */
+@media (min-width: 769px) {
+  #sc-canvas.sc-centered { margin-left: max(0px, calc(50vw - var(--sc-cx))); } /* vw : stable quand une barre de défilement apparaît */
 }
 
 /* ── Effets au survol ──────────────────────────────────── */
@@ -52,7 +64,6 @@ body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { a
     transform: none !important; /* annule les miroirs sur mobile */
   }
   .sc-el.sc-bloc { height: auto !important; } /* le texte dicte la hauteur */
-  .sc-el.sc-image { height: auto !important; } /* l'image dicte sa propre hauteur, plus de bandeau écrasé */
 
   /* Rôles mobiles */
   .sc-el.sc-mob-hidden { display: none !important; }
@@ -71,11 +82,15 @@ body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { a
   }
   /* Les blocs empilés passent devant le fond */
   .sc-el:not(.sc-mob-bg) { z-index: 1; }
-  /* !important nécessaire : le cadrage "Remplir" posé en ligne (par défaut,
-     ou choisi par l'auteur pour le bureau) gagnerait sinon sur ce contain —
-     sur mobile on veut toujours voir l'image entière, jamais rognée */
-  .sc-image img  { object-fit: contain !important; max-height: 60vw; }
-  .sc-iframe     { height: 56vw !important; } /* ratio 16/9 approx */
+  /* Médias : pleine largeur en gardant les proportions du cadre (plus de bandeaux) */
+  .sc-el.sc-fit-ratio:not(.sc-mob-bg) { height: auto !important; aspect-ratio: var(--mr, 3 / 2); }
+  /* « image entière » : l'image complète, à ses propres proportions, sans recadrage */
+  .sc-el.sc-image.sc-fit-full:not(.sc-mob-bg) { height: auto !important; aspect-ratio: auto; }
+  .sc-el.sc-image.sc-fit-full img { height: auto !important; object-fit: contain !important; }
+  .sc-el.sc-iframe.sc-fit-full:not(.sc-mob-bg) { height: auto !important; aspect-ratio: 16 / 9; }
+  /* « bandeau » : ancien comportement, hauteur réduite */
+  .sc-el.sc-image.sc-fit-band img { object-fit: cover; max-height: 60vw; }
+  .sc-el.sc-iframe.sc-fit-band { height: 56vw !important; }
 }
 
 .sc-text  { min-width: 60px; min-height: 1em; }
@@ -103,3 +118,26 @@ body:not(.sc-edit-mode) .sc-hover-wiggle:hover, .sc-hover-wiggle.sc-hover-on { a
   transition: background .15s;
 }
 #sc-edit-hint:hover { background: rgba(26,26,46,1); }
+
+/* ── Iframe recadrée : sur mobile on garde les proportions du cadre ── */
+@media (max-width:768px) {
+  .sc-iframe.sc-cropped { height:auto !important; aspect-ratio:var(--cw) / var(--ch); }
+}
+
+/* ── Page à créer (utilisateur connecté) ── */
+#sc-create-page {
+  font-family:sans-serif;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;color:#888;font-size:14px;
+}
+#sc-create-page button {
+  display:block;margin:1rem auto .5rem;padding:9px 22px;
+  background:#0F6E56;color:#fff;border:none;cursor:pointer;font-size:13px;
+}
+#sc-create-page #sc-create-page-msg { display:block;font-size:12px;color:#c0392b;min-height:1.2em; }
+#sc-create-page a { color:#aaa;font-size:12px;text-decoration:none;display:block;margin-top:.3rem; }
+
+/* ── Page non publiée (vue connectée) ── */
+#sc-draft-banner {
+  position:fixed;top:0;left:0;right:0;z-index:9800;padding:7px 12px;text-align:center;
+  background:#fff3cd;color:#7a4b00;border-bottom:1px solid #f0d58a;font:12px sans-serif;
+}

@@ -5,6 +5,10 @@
  */
 
 $elements = $page_data['elements'] ?? [];
+// Blocs globaux masqués sur cette page uniquement
+$hidden_globals = $page_data['meta']['hiddenGlobals'] ?? [];
+$elements = array_values(array_filter($elements, fn($e) =>
+    empty($e['global']) || !in_array($e['id'] ?? '', $hidden_globals, true)));
 
 // Trier par z-index pour le rendu desktop
 $desktop = $elements;
@@ -67,6 +71,8 @@ foreach ($desktop as $el):
         }
     } else {
         $st .= "overflow:hidden;padding:0;";
+        // Mobile : proportions du cadre (bureau) pour garder le média en grand
+        $st .= "--mr:" . ($w ?: 300) . " / " . ($h ?: 200) . ";";
     }
 
     if (!empty($s['color']))      $st .= "color:".htmlspecialchars($s['color']).";";
@@ -85,6 +91,7 @@ foreach ($desktop as $el):
 
     // Contenu
     $content_html = '';
+    $cropped = false;
     switch ($type) {
         case 'image':
             if (!empty($el['content'])) {
@@ -93,8 +100,13 @@ foreach ($desktop as $el):
                     ENT_QUOTES
                 );
                 $alt = htmlspecialchars($el['alt'] ?? '', ENT_QUOTES);
-                $fit = ($s['imgFit'] ?? '') === 'contain' ? 'contain' : 'cover';
-                $content_html = "<img src=\"{$src}\" alt=\"{$alt}\" style=\"width:100%;height:100%;object-fit:{$fit};display:block\" loading=\"lazy\">";
+                // dimensions réelles : le navigateur réserve la place avant le chargement (mobile « image entière »)
+                $dim = '';
+                if (!str_starts_with($el['content'], 'http')) {
+                    $sz = @getimagesize(__DIR__ . '/../' . ltrim($el['content'], '/'));
+                    if ($sz && $sz[0] && $sz[1]) $dim = " width=\"{$sz[0]}\" height=\"{$sz[1]}\"";
+                }
+                $content_html = "<img src=\"{$src}\" alt=\"{$alt}\"{$dim} style=\"width:100%;height:100%;object-fit:cover;display:block\" loading=\"lazy\">";
             }
             break;
         case 'file':
@@ -109,12 +121,31 @@ foreach ($desktop as $el):
             break;
         case 'iframe':
             if (!empty($el['content'])) {
-                $src = htmlspecialchars($el['content'], ENT_QUOTES);
-                $content_html = "<iframe src=\"{$src}\" frameborder=\"0\" allowfullscreen style=\"width:100%;height:100%;border:none;display:block\" loading=\"lazy\"></iframe>";
+                $src  = htmlspecialchars($el['content'], ENT_QUOTES);
+                $crop = $el['crop'] ?? null;
+                if (is_array($crop) && floatval($crop['s'] ?? 0) > 0) {
+                    // Recadrage : la page source est affichée dans une fenêtre vw×vh,
+                    // décalée de (x,y) et zoomée de s. --k = mise à l'échelle mobile.
+                    $cropped = true; $has_crop = true;
+                    $cs  = floatval($crop['s']);
+                    $cvw = intval($crop['vw'] ?? 1280) ?: 1280;
+                    $cvh = intval($crop['vh'] ?? 800)  ?: 800;
+                    $tx  = round(-floatval($crop['x'] ?? 0) * $cs, 2);
+                    $ty  = round(-floatval($crop['y'] ?? 0) * $cs, 2);
+                    $cw  = $w ?: 300; $ch = $h ?: 200;
+                    $st .= "--cw:{$cw};--ch:{$ch};";
+                    $content_html = "<div class=\"sc-crop-box\" data-cw=\"{$cw}\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">"
+                        . "<iframe src=\"{$src}\" frameborder=\"0\" allowfullscreen loading=\"lazy\" style=\"position:absolute;left:0;top:0;width:{$cvw}px;height:{$cvh}px;max-width:none;border:none;display:block;"
+                        . "transform-origin:0 0;transform:translate(calc(var(--k,1) * {$tx}px),calc(var(--k,1) * {$ty}px)) scale(calc(var(--k,1) * {$cs}))\"></iframe></div>";
+                } else {
+                    $content_html = "<iframe src=\"{$src}\" frameborder=\"0\" allowfullscreen style=\"width:100%;height:100%;border:none;display:block\" loading=\"lazy\"></iframe>";
+                }
             }
             break;
         default:
-            $content_html = $el['content'] ?? '';
+            // Enveloppe unique (comme dans l'éditeur) : sinon chaque morceau de texte
+            // (gras, italique…) devient un élément flex séparé et casse le centrage
+            $content_html = '<div class="sc-bloc-content">' . ($el['content'] ?? '') . '</div>';
     }
 
     // Lien sortant — supporte "page", "page#ancre", et URLs externes
@@ -130,11 +161,13 @@ foreach ($desktop as $el):
     if (($el['mobileRole'] ?? '') === 'background') $cls .= ' sc-mob-bg';
     if (!empty($el['hover']) && preg_match('/^[a-z]+$/', $el['hover']))
         $cls .= ' sc-hover-' . $el['hover'];
+    if ($cropped) $cls .= ' sc-cropped';
+    if ($isMedia) $cls .= ' sc-fit-' . (in_array($el['mobileFit'] ?? '', ['full','band']) ? $el['mobileFit'] : 'ratio');
 
     if ($link):
 ?>
 <a href="<?= htmlspecialchars($link,ENT_QUOTES) ?>"<?= $target ?><?= $anchor_attr ?>
-   class="<?= $cls ?>" style="<?= $st ?>text-decoration:none;display:block">
+   class="<?= $cls ?>" style="text-decoration:none;color:inherit;display:block;<?= $st ?>">
   <?= $content_html ?>
 </a>
 <?php else: ?>
@@ -142,3 +175,18 @@ foreach ($desktop as $el):
   <?= $content_html ?>
 </div>
 <?php endif; endforeach; ?>
+<?php if (!empty($has_crop)): ?>
+<script>
+/* Iframes recadrées : quand le bloc change de largeur (mobile), le recadrage suit */
+(function(){
+  var mq = window.matchMedia('(max-width:768px)');
+  function fit(){
+    document.querySelectorAll('.sc-crop-box').forEach(function(b){
+      var k = mq.matches ? b.clientWidth / (+b.dataset.cw || b.clientWidth) : 1;
+      b.style.setProperty('--k', k || 1);
+    });
+  }
+  fit(); window.addEventListener('resize', fit);
+})();
+</script>
+<?php endif ?>

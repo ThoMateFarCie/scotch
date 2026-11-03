@@ -30,7 +30,7 @@
   var A = {
     ctx: null, on: false,
     master: null, filter: null, lfo: null, lfoGain: null,
-    voices: {}, vol: 0.6, cutoff: 0.5, rate: 0.32, swing: 0, accent: 0,
+    voices: {}, vol: 0.6, cutoff: 0.5, rate: 0.32,
     SCALE: [0, 3, 5, 7, 10], BASE: 55,
     mini: { echo: { val: 0.4 }, crush: { val: 0.35 }, noise: { val: 0.5 }, verb: { val: 0.5 } },
     echo: null, crush: null,
@@ -47,6 +47,9 @@
       A.lfo.connect(A.lfoGain); A.lfoGain.connect(A.filter.frequency);
       A.lfo.start();
       A.filter.connect(A.master); A.master.connect(A.ctx.destination);
+      // Bus clavier live : toujours audible, indépendant de l'état du drone
+      A.keyBus = A.ctx.createGain(); A.keyBus.gain.value = 0.9;
+      A.keyBus.connect(A.ctx.destination);
 
       // ECHO-02 : delay + feedback (send parallèle)
       var eIn = A.ctx.createGain(), dl = A.ctx.createDelay(1.2),
@@ -136,158 +139,12 @@
   var GLYPHS = { sine: '\u223F', triangle: '\u25B3', sawtooth: '\u25FF', square: '\u2293' };
 
   function blockSound(idx) {
-    var b = blocks[idx]; if (!b) return { wave: 'sawtooth', pitch: 0, level: 0.8, punch: 0 };
-    if (!b.snd) b.snd = { wave: blockCharacter(idx).wave, pitch: 0, level: 0.8, punch: 0 };
+    var b = blocks[idx]; if (!b) return { wave: 'sawtooth', pitch: 0, level: 0.8 };
+    if (!b.snd) b.snd = { wave: blockCharacter(idx).wave, pitch: 0, level: 0.8 };
     if (b.snd.level == null) b.snd.level = 0.8;
-    if (b.snd.punch == null) b.snd.punch = 0;
     return b.snd;
   }
   function pitchFactor(idx) { return Math.pow(2, blockSound(idx).pitch / 12); }
-
-  /* ── Image → onde : les pixels d'une image deviennent le timbre d'un bloc ──
-     Une colonne moyenne de luminance (largeur IMG_N, lissée sur IMG_H lignes)
-     sert de cycle d'onde ; une DFT sur ce cycle donne les harmoniques passées
-     à setPeriodicWave. L'oscillateur "joue" littéralement l'image, un peu
-     comme le mode Image Synth de MetaSynth mais en une seule passe. */
-  var IMG_N = 128, IMG_H = 48, IMG_HARM = 32;
-
-  function analyzeImage(idx, img) {
-    var b = blocks[idx]; if (!b) return;
-    var cv = document.createElement('canvas');
-    cv.width = IMG_N; cv.height = IMG_H;
-    var g2 = cv.getContext('2d');
-    g2.drawImage(img, 0, 0, IMG_N, IMG_H);
-    var data = g2.getImageData(0, 0, IMG_N, IMG_H).data;
-    var nPx = IMG_N * IMG_H;
-    var lumBuf = new Float32Array(nPx);
-    var profile = new Float32Array(IMG_N), sum = 0, whiteCount = 0;
-    for (var x = 0; x < IMG_N; x++) {
-      var acc = 0;
-      for (var y = 0; y < IMG_H; y++) {
-        var px = y * IMG_N + x;
-        var p = px * 4;
-        var lum = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
-        lumBuf[px] = lum;
-        acc += lum;
-        if (lum > 200) whiteCount++;   // quasi-blanc : réutilise le lum déjà calculé, pas de passe en plus
-      }
-      profile[x] = acc / IMG_H;
-      sum += profile[x];
-    }
-    var mean = sum / IMG_N;
-    b.imgWhite = whiteCount / nPx;   // 0..1, part de blanc dans l'image → brillance du filtre
-
-    // Mouvement : part des pixels qui ont vraiment changé depuis la frame
-    // précédente (comparaison pixel à pixel, pas une moyenne globale qui noie
-    // les petits détails qui bougent — scintillement, flocons...). Un GIF qui
-    // bouge beaucoup pousse le niveau du bloc, ET au-delà d'un seuil déclenche
-    // un coup rythmique. Ne sonne que si le bloc est câblé et le synthé allumé.
-    if (b.imgPrevLum) {
-      var changed = 0;
-      for (var d = 0; d < nPx; d++) {
-        if (Math.abs(lumBuf[d] - b.imgPrevLum[d]) > 15) changed++;
-      }
-      b.imgMotion = Math.min(1, (changed / nPx) * 6);   // 6 ≈ sensibilité réglée à l'oreille
-      // Vitesse lissée (moyenne mobile du mouvement) : le pouls global du GIF,
-      // moins nerveux que imgMotion instantané — utilisé pour la poussée de niveau.
-      b.imgSpeed = (b.imgSpeed == null) ? b.imgMotion : (b.imgSpeed * 0.75 + b.imgMotion * 0.25);
-      if (A.on && A.ctx && b.imgMotion > 0.08 &&
-          cables.some(function (cb) { return cb.from === idx; })) {
-        var hitNow = A.ctx.currentTime;
-        if (!b.imgLastHit || hitNow - b.imgLastHit > 0.1) {
-          pluck(hitNow, 220 * pitchFactor(idx), idx, 0.18 + b.imgMotion * 0.22);
-          pulseBlock(idx, hitNow);
-          b.imgLastHit = hitNow;
-        }
-      }
-    }
-    b.imgPrevLum = lumBuf;
-
-    var peak = 0;
-    for (var x2 = 0; x2 < IMG_N; x2++) {
-      profile[x2] -= mean;                    // retire le continu (sinon pas de son)
-      peak = Math.max(peak, Math.abs(profile[x2]));
-    }
-    if (peak > 0) for (var x3 = 0; x3 < IMG_N; x3++) profile[x3] /= peak;   // -1..1
-
-    // DFT naïve sur IMG_HARM harmoniques (une image basse résolution n'a pas
-    // besoin de plus pour donner un timbre reconnaissable)
-    var real = new Float32Array(IMG_HARM + 1), imag = new Float32Array(IMG_HARM + 1);
-    for (var k = 1; k <= IMG_HARM; k++) {
-      var re = 0, im = 0;
-      for (var n = 0; n < IMG_N; n++) {
-        var a = -2 * Math.PI * k * n / IMG_N;
-        re += profile[n] * Math.cos(a);
-        im += profile[n] * Math.sin(a);
-      }
-      real[k] = re / IMG_N; imag[k] = im / IMG_N;
-    }
-    b.imgFFT = { real: real, imag: imag };
-    b.imgWave = null;             // (re)construite à la demande sur le bon AudioContext
-    updateBlockSound(idx);        // bascule une voix déjà active sur le nouveau timbre
-  }
-
-  // GIF animé : relit les pixels en boucle pour suivre les frames — le timbre
-  // évolue avec l'animation, comme un scan de wavetable piloté par le GIF.
-  function startImageAnim(idx, img) {
-    var b = blocks[idx]; if (!b || b.imgAnimTimer) return;
-    b.imgAnimTimer = setInterval(function () {
-      var bb = blocks[idx];
-      if (!bb || !bb.el || !bb.el.isConnected) { clearInterval(b.imgAnimTimer); return; }
-      try { analyzeImage(idx, img); } catch (e) {}
-    }, 180);
-  }
-
-  // Analyse différée : attend le chargement de l'<img> avant de lire ses pixels
-  function setupImageBlock(idx) {
-    var b = blocks[idx]; if (!b) return;
-    var img = b.el.querySelector('img'); if (!img) return;
-    var animated = /\.gif(\?|#|$)/i.test(img.getAttribute('src') || '');
-    var go = function () {
-      try { analyzeImage(idx, img); } catch (e) { /* image inaccessible (CORS) : timbre par défaut */ }
-      if (animated) startImageAnim(idx, img);
-    };
-    if (img.complete && img.naturalWidth) go();
-    else img.addEventListener('load', go);
-  }
-
-  // PeriodicWave Web Audio du bloc, construite (et mise en cache) à la demande
-  function blockPeriodicWave(idx) {
-    var b = blocks[idx]; if (!b || !b.imgFFT || !A.ctx) return null;
-    if (!b.imgWave) b.imgWave = A.ctx.createPeriodicWave(b.imgFFT.real, b.imgFFT.imag);
-    return b.imgWave;
-  }
-
-  // Applique à un oscillateur soit le timbre-image du bloc, soit son onde standard
-  function applyOscWave(osc, idx) {
-    var pw = blockPeriodicWave(idx);
-    if (pw) osc.setPeriodicWave(pw); else osc.type = blockSound(idx).wave;
-  }
-
-  // Paire d'oscillateurs de la nappe (o1 + o2 détuné) : si le bloc a un timbre-image,
-  // les DEUX portent ce timbre — sinon o2 reste le compagnon triangle habituel.
-  // (sans ça, la moitié du son restait un triangle générique et noyait l'image)
-  function applyVoiceWave(o1, o2, idx) {
-    var pw = blockPeriodicWave(idx);
-    if (pw) { o1.setPeriodicWave(pw); o2.setPeriodicWave(pw); }
-    else { o1.type = blockSound(idx).wave; o2.type = 'triangle'; }
-  }
-
-  // Transposition apportée par les câbles branchés sur ce bloc : même mapping
-  // longueur→note que la nappe des blocs vides (noteFreq), mais exprimée en
-  // facteur multiplicatif ajouté aux notes tapées plutôt qu'en hauteur
-  // exclusive — comme ça l'effet distance joue aussi sur les blocs codés,
-  // pas seulement sur les blocs vides. Pas de câble = pas de transposition.
-  function distanceFactor(idx) {
-    var cs = cables.filter(function (cb) { return cb.from === idx || cb.to === idx; });
-    if (!cs.length) return 1;
-    var total = 0;
-    cs.forEach(function (cb) {
-      var p1 = jackPos(cb.from, 'out'), p2 = jackPos(cb.to, 'in');
-      total += Math.hypot(p2.x - p1.x, p2.y - p1.y);
-    });
-    return noteFreq(total / cs.length) / A.BASE;
-  }
 
   // Chaîne par bloc : sources → gain (niveau) → filtre (brillance Y) → filtre global
   function blockGain(idx) {
@@ -314,10 +171,7 @@
     var y  = (r.top + r.height / 2) / ch;          // 0 (haut) → 1 (bas)
     y = Math.max(0, Math.min(1, y));
     // 9000 Hz en haut → 350 Hz en bas, courbe exponentielle (perception)
-    var hz = 350 * Math.pow(9000 / 350, 1 - y);
-    // Bloc-image : la part de blanc dans l'image éclaircit ou feutre en plus
-    if (b.imgWhite != null) hz *= 0.6 + b.imgWhite * 0.9;
-    return hz;
+    return 350 * Math.pow(9000 / 350, 1 - y);
   }
 
   // Profondeur : taille du bloc → présence. Grand = proche (fort, brillant),
@@ -338,9 +192,7 @@
       b.filterNode.frequency.setTargetAtTime(brightnessHz(idx) * depth, t, 0.05);
     }
     if (b.gainNode) {
-      // Bloc-image : la vitesse lissée du GIF pousse le niveau (jusqu'à +120%)
-      var boost = 1 + Math.min(1, b.imgSpeed || 0) * 1.2;
-      b.gainNode.gain.setTargetAtTime(blockSound(idx).level * depth * boost, t, 0.05);
+      b.gainNode.gain.setTargetAtTime(blockSound(idx).level * depth, t, 0.05);
     }
     updateHalo(idx);
   }
@@ -377,34 +229,9 @@
     b.animAnchor = null;
   }
 
-  // Coupe l'animation de tous les blocs et les replace à leur point d'ancrage
-  function resetAllAnims() {
-    var n = 0;
-    blocks.forEach(function (b, idx) {
-      if (!b) return;
-      if (b.anim && b.anim !== 'off') { stopAnim(idx); n++; }
-      refreshAnimPanel(idx);
-    });
-    return n;
-  }
-
   // Boucle d'animation : appelée en continu, déplace les blocs animés
   var _animT0 = null;
-  // Gel temporaire (touche Espace maintenue) : plus facile de cliquer un bloc
-  // qui bouge vite. Au relâchement, _animT0 est décalé de la durée de la pause
-  // pour reprendre exactement où c'était, sans saut de position.
-  var ANIM_PAUSED = false, ANIM_PAUSE_START = null;
-  function setAnimPaused(on) {
-    if (on === ANIM_PAUSED) return;
-    if (on) { ANIM_PAUSED = true; ANIM_PAUSE_START = performance.now(); }
-    else {
-      ANIM_PAUSED = false;
-      if (_animT0 != null && ANIM_PAUSE_START != null) _animT0 += performance.now() - ANIM_PAUSE_START;
-      ANIM_PAUSE_START = null;
-    }
-  }
   function tickAnims(now) {
-    if (ANIM_PAUSED) return;
     if (_animT0 == null) _animT0 = now;
     var t = (now - _animT0) / 1000;   // secondes
     blocks.forEach(function (b, idx) {
@@ -417,7 +244,7 @@
       var a = b.animAnchor, ph = b.animPhase || 0;
       var speed = (b.animSpeed != null ? b.animSpeed : 0.5);   // cycles/seconde
       var amp   = (b.animAmp   != null ? b.animAmp   : 1);     // multiplicateur
-      var ax = 130 * amp, ay = 95 * amp;      // amplitudes (px), réglables — de discret à très grand, dézoomé compris
+      var ax = 26 * amp, ay = 20 * amp;       // amplitudes (px), réglables
       var w = t * speed * Math.PI * 2 + ph;
       var nx = a.x, ny = a.y, nw = a.w, nh = a.h;
       if (b.anim === 'derive') {                    // petit cercle lent + variation
@@ -469,14 +296,11 @@
   function updateBlockSound(idx) {
     if (!A.ctx) return;
     var t = A.ctx.currentTime;
-    var b = blocks[idx];
-    // Bloc-image : rafraîchit filtre (blancheur) + niveau (vitesse) ensemble
-    if (b && b.imgFFT) applySpatial(idx);
     cables.forEach(function (cb) {
       if (cb.from !== idx) return;
       var v = A.voices[cb.id]; if (!v) return;
       var snd = blockSound(idx);
-      applyVoiceWave(v.o1, v.o2, idx);
+      v.o1.type = snd.wave;
       var nf = v.baseF * pitchFactor(idx);
       v.f = nf;
       v.o1.frequency.setTargetAtTime(nf, t, 0.08);
@@ -488,7 +312,8 @@
   function previewBlock(idx) {
     try {
       actx();
-      pluck(A.ctx.currentTime, 220 * pitchFactor(idx), idx, 0.14);
+      var snd = blockSound(idx);
+      pluck(A.ctx.currentTime, 220 * pitchFactor(idx), snd.wave, 0.14);
     } catch (e) {}
   }
 
@@ -537,14 +362,6 @@
     // Un token → event (note simple, accord "a+b+c", tirage "choose(a b c)", perc, silence)
     function tokenEvent(tok) {
       if (tok === '.') return { midi: null, dt: st.dur };
-      // perc1/perc2 : percussion résolue à la lecture selon l'onde ACTUELLE du
-      // bloc (potard/bouton onde) — pas figée à la génération, donc changer
-      // l'onde en direct change vraiment le son entendu.
-      if (tok === 'perc1' || tok === 'perc2')
-        return { midi: null, dynPerc: tok === 'perc1' ? 1 : 2, vol: st.vol, dt: st.dur };
-      // perc3 : une basse — pas une percussion synthétisée mais une vraie note
-      // grave, jouée par le moteur mélodique (onde et pitch du bloc compris).
-      if (tok === 'perc3') return { midi: 36 + st.trans, wave: st.wave, vol: st.vol, dt: st.dur };
       if (DRUMS[tok]) return { midi: null, drum: DRUMS[tok], vol: st.vol, dt: st.dur };
       // choose(a b c) : liste de candidats, tirage à la lecture
       var mc = tok.match(/^choose\(([^)]*)\)$/);
@@ -616,33 +433,7 @@
   // mutePending[i] = état visé en attente du prochain cycle.
   // ── Carrefour : reçoit des blocs câblés, en laisse jouer au hasard ──
   // members: blocs câblés | active: set d'index actifs ce cycle | density: 0..1
-  var TURN = { members: [], active: {}, density: 0.34, div: 2, lastStep: null, jackEl: null,
-               auto: false, autoT0: null };
-
-  // Densité "vivante" : dérive lente entre creux et plein (un simple sinus
-  // long, pas de LFO à régler) — pour que CARREFOUR respire tout seul plutôt
-  // que de rester figé sur le dernier préréglage cliqué.
-  function updateAutoDensity(now) {
-    if (!TURN.auto) return;
-    if (TURN.autoT0 == null) TURN.autoT0 = now;
-    var t = (now - TURN.autoT0) / 1000;
-    var period = 26;   // secondes pour un cycle complet creux → plein → creux
-    var wave = (Math.sin(t * 2 * Math.PI / period) + 1) / 2;
-    TURN.density = 0.12 + wave * 0.62;
-  }
-
-  // Auto-calage : au lieu de laisser BARLEN n'être qu'une référence passive
-  // consultée au hasard des redémarrages, on recale tout le monde (nappe,
-  // blocs codés) au début de chaque mesure — même mécanisme que le bouton
-  // RESYNCHRO, déclenché automatiquement au lieu d'attendre un clic.
-  var AUTOSYNC = { on: false, lastBar: null };
-  function tickAutoSync() {
-    if (!AUTOSYNC.on || !A.on || !A.ctx || A.t0 == null) return;
-    var barDur = (60 / bpm()) * Math.max(1, BARLEN);
-    var bar = Math.floor((A.ctx.currentTime - A.t0) / barDur);
-    if (AUTOSYNC.lastBar == null) { AUTOSYNC.lastBar = bar; return; }
-    if (bar > AUTOSYNC.lastBar) { resync(); AUTOSYNC.lastBar = 0; }
-  }
+  var TURN = { members: [], active: {}, density: 0.34, div: 2, lastStep: null, jackEl: null };
 
   function turnHas(i) { return TURN.members.indexOf(i) >= 0; }
   // Un bloc câblé au carrefour ne sonne que s'il est dans le tirage courant
@@ -790,27 +581,15 @@
     btns.forEach(function (btn) { el.appendChild(btn); });  // rétablit les boutons
   }
 
-  // Lit le code d'un bloc en ignorant les boutons UI (mute, croix). Le
-  // navigateur restructure le contenu au fil de l'édition — nouvelle ligne
-  // tapée = <div> ou <br> insérée (parfois imbriquée), pas un simple \n. Sans
-  // reconstruction, deux lignes se recollaient en une seule (ex. "play ..." +
-  // "div 4" → "play ...div 4", plus aucune commande reconnue) — d'où la
-  // descente récursive plutôt qu'un simple tour des enfants directs.
+  // Lit le code d'un bloc en ignorant les boutons UI (mute, croix)
   function blockCode(el) {
-    var out = { text: '' };
-    function walk(node) {
-      if (node.nodeType === 3) { out.text += node.textContent; return; }
-      if (node.nodeType !== 1) return;
-      if (node.classList && (node.classList.contains('sc-block-mute') ||
-                              node.classList.contains('sc-block-del'))) return;
-      if (node.tagName === 'BR') { out.text += '\n'; return; }
-      var display = getComputedStyle(node).display;
-      var isBlockLevel = display !== 'inline' && display !== 'inline-block';
-      if (isBlockLevel && out.text.length && out.text.charAt(out.text.length - 1) !== '\n') out.text += '\n';
-      node.childNodes.forEach(walk);
-    }
-    el.childNodes.forEach(walk);
-    return out.text;
+    var parts = [];
+    el.childNodes.forEach(function (n) {
+      if (n.nodeType === 1 && (n.classList.contains('sc-block-mute') ||
+                               n.classList.contains('sc-block-del'))) return;
+      parts.push(n.textContent);
+    });
+    return parts.join('');
   }
 
   function refreshBlockCode(i) {
@@ -897,13 +676,14 @@
       if (e.button !== 0) return;
       if (el.getAttribute('contenteditable') === 'true') return;
       if (e.target.closest('.sc-hole, .sc-jackbar, .sc-wave-btn, .sc-pitch, .sc-level, .sc-live-resize, .sc-modjack, .sc-block-del, .sc-block-mute, .sc-anim-panel')) return;
+      selectBlock(i);            // sélection immédiate pour le clavier live
       e._scBlockHit = true;      // signale au listener de fond de ne pas désélectionner
       // au premier plan parmi les blocs, mais toujours sous les câbles (9000)
       Z_TOP = (Z_TOP >= 8000) ? 100 : Z_TOP + 1;
       el.style.zIndex = Z_TOP;
       var cr = canvasEl().getBoundingClientRect();
       var r0 = el.getBoundingClientRect();
-      var sx = e.clientX, sy = e.clientY, moved = false, downAt = performance.now();
+      var sx = e.clientX, sy = e.clientY, moved = false;
       // position de départ en coordonnées canvas NON zoomées
       var x0 = (r0.left - cr.left) / VIEW.zoom;
       var y0 = (r0.top  - cr.top ) / VIEW.zoom;
@@ -913,10 +693,8 @@
         if (!moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
         moved = true;
         // le déplacement écran est divisé par le zoom pour rester juste
-        // (pas de clamp à 0 : le canvas est pannable/zoomable dans toutes les
-        // directions, un bloc doit pouvoir passer en coordonnées négatives)
-        el.style.left = (x0 + dx / VIEW.zoom) + 'px';
-        el.style.top  = (y0 + dy / VIEW.zoom) + 'px';
+        el.style.left = Math.max(0, x0 + dx / VIEW.zoom) + 'px';
+        el.style.top  = Math.max(0, y0 + dy / VIEW.zoom) + 'px';
         retuneBlock(i);   // les câbles glissent de note pendant le déplacement
       };
       var up = function () {
@@ -930,17 +708,6 @@
           // si le bloc est animé, recaler son point d'ancrage sur la nouvelle position
           var bb = blocks[i];
           if (bb && bb.anim && bb.anim !== 'off') bb.animAnchor = null;
-        } else {
-          selectBlock(i);
-          // clic bref (pas de glisser) : entre directement en édition — curseur
-          // au tout début du texte. Un appui long sans glisser (tentative de
-          // déplacement un peu tremblante) ne doit PAS basculer en édition —
-          // seul un clic rapide compte comme un clic. Et si Espace est tenu
-          // (gel des animations pour viser un bloc précis), le clic ne sert
-          // qu'à sélectionner — sinon relâcher Espace tape une espace dans le texte.
-          if (!ANIM_PAUSED && el.classList.contains('sc-bloc') && performance.now() - downAt < 300) {
-            startLiveEdit(i);
-          }
         }
       };
       el.addEventListener('pointermove', mv);
@@ -956,15 +723,16 @@
     el.className = 'sc-el sc-bloc';
     el.style.cssText = 'position:absolute;left:' + Math.max(0, x) + 'px;top:' +
       Math.max(0, y) + 'px;width:' + (opts.w || 190) + 'px;min-height:' + (opts.h || 104) + 'px;' +
-      'padding:10px 12px;box-sizing:border-box;z-index:60;background-color:' + (opts.bg || pick(GEN_COLORS)) + ';color:#1a1a1e;';
-    // Sans code fourni (double-clic sur le fond) : une mélodie pour démarrer,
-    // ou parfois une page blanche pour écrire directement les siens.
-    el.textContent = opts.code != null ? opts.code : (chance(0.5) ? genMelody() : '');
+      'padding:10px 12px;box-sizing:border-box;z-index:60;background-color:#d8d5cc;color:#1a1a1e;';
+    el.textContent = opts.code || '# nouveau module\ntempo 120\nwave saw\nplay c3 . e3 .';
     cv.appendChild(el);
     var i = blocks.length;
     blocks.push({ el: el, created: true });
     makeBar(i);
     bindBlockDrag(i);
+    el.addEventListener('dblclick', function (e) {
+      e.preventDefault(); e.stopPropagation(); startLiveEdit(i);
+    });
     // croix de suppression (blocs créés par le visiteur uniquement)
     var xb = document.createElement('div');
     xb.className = 'sc-block-del';
@@ -978,57 +746,6 @@
     el.appendChild(xb);
     refreshBlockCode(i);
     if (!opts.noEdit) startLiveEdit(i);
-    return i;
-  }
-
-  /* ── Bloc-image (visiteur) : une image choisie sur son appareil devient
-     une source sonore, câblable comme n'importe quel autre bloc ── */
-  function createImageBlock(x, y, file) {
-    var cv = canvasEl();
-    var el = document.createElement('div');
-    el.className = 'sc-el sc-image';
-    el.style.cssText = 'position:absolute;left:' + Math.max(0, x) + 'px;top:' +
-      Math.max(0, y) + 'px;width:300px;height:200px;z-index:60;background:#111;';
-    var img = document.createElement('img');
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;';
-    img.alt = file.name || 'image';
-    el.appendChild(img);
-    cv.appendChild(el);
-    var i = blocks.length;
-    blocks.push({ el: el, isImageSrc: true });
-    makeBar(i);
-    bindBlockDrag(i);
-    ensureResizer(i);   // coin de redimensionnement : agrandir le GIF à la main
-    var xb = document.createElement('div');
-    xb.className = 'sc-block-del';
-    xb.setAttribute('contenteditable', 'false');
-    xb.textContent = '✕';
-    xb.title = 'supprimer ce bloc';
-    xb.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      deleteBlock(i);
-    });
-    el.appendChild(xb);
-    var isGif = file.type === 'image/gif' || /\.gif$/i.test(file.name || '');
-    img.addEventListener('load', function () {
-      try { analyzeImage(i, img); } catch (e) {}
-      if (isGif) startImageAnim(i, img);
-    });
-    img.src = URL.createObjectURL(file);
-    return i;
-  }
-
-  // Crée un bloc-image au centre de la vue (bouton du module IMAGE)
-  function spawnImageBlock(file) {
-    var cx = window.innerWidth / 2 - 95 + (Math.random() * 120 - 60);
-    var cy = window.innerHeight / 2 - 65 + (Math.random() * 120 - 60);
-    var i = createImageBlock(cx, cy, file);
-    var b = blocks[i];
-    if (b && b.el) {
-      b.el.style.transition = 'box-shadow .3s';
-      b.el.style.boxShadow = '0 0 0 3px #7dd8a8';
-      setTimeout(function () { b.el.style.boxShadow = ''; }, 500);
-    }
     return i;
   }
 
@@ -1085,7 +802,6 @@
 
   function ensureChain(i) {
     var st = LIVE[i];
-    if (!st) st = LIVE[i] = { prog: null, pending: null, pos: 0, nextT: 0, chain: null, fx: {} };
     if (st.chain) return st.chain;
     var c = A.ctx, gT = c.createGain(), g = c.createGain();
     gT.gain.value = 1; g.gain.value = 0.9;
@@ -1148,13 +864,11 @@
 
   function liveTone(i, time, midi, ev, dur) {
     var st = LIVE[i], ch = ensureChain(i), c = A.ctx;
-    var f = 440 * Math.pow(2, (midi - 69) / 12) * pitchFactor(i) * distanceFactor(i);
+    var f = 440 * Math.pow(2, (midi - 69) / 12) * pitchFactor(i);
     var wave = ev.wave || blockSound(i).wave;
-    var pw   = ev.wave ? null : blockPeriodicWave(i);   // code explicite = priorité sur l'image
     var vol  = (ev.vol != null ? ev.vol : 0.8) * 0.4;
     var o = c.createOscillator(), g = c.createGain();
-    if (pw) o.setPeriodicWave(pw); else o.type = wave;
-    o.frequency.value = f;
+    o.type = wave; o.frequency.value = f;
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(vol, time + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
@@ -1173,8 +887,12 @@
     if (st.fx.noise) st.fx.noise.bp.frequency.setTargetAtTime(f * 2, time, 0.05);
   }
 
-  // Bloc sélectionné : fige son animation et affiche son panneau ANIMATION
-  var LIVE_SEL = -1;
+  /* ── Clavier live : jouer des notes à travers le bloc sélectionné ── */
+  var LIVE_SEL = -1;   // index du bloc sélectionné pour le jeu au clavier
+  // Rangée du clavier (AZERTY/QWERTY, position physique) → degré de gamme
+  var KEY_ROW = ['KeyQ','KeyS','KeyD','KeyF','KeyG','KeyH','KeyJ','KeyK','KeyL'];
+  var KEY_SCALE = [0, 2, 4, 5, 7, 9, 11, 12, 14];   // gamme majeure sur 2 octaves
+  var keyHeld = {};
 
   function selectBlock(i) {
     if (LIVE_SEL >= 0 && blocks[LIVE_SEL]) {
@@ -1203,17 +921,48 @@
     }
   }
 
+  function playKeyNote(i, midi) {
+    if (!blocks[i]) return;
+    actx();                       // démarre/réveille l'audio au besoin
+    if (A.ctx.state === 'suspended') A.ctx.resume();
+    var c = A.ctx, t = c.currentTime;
+    var f = 440 * Math.pow(2, (midi - 69) / 12) * pitchFactor(i);
+    var wave = blockSound(i).wave;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = wave; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.012);
+    // pan selon la position du bloc, puis bus clavier (toujours audible)
+    o.connect(g);
+    if (c.createStereoPanner) {
+      var pn = c.createStereoPanner(); pn.pan.value = blockPan(i);
+      g.connect(pn); pn.connect(A.keyBus);
+    } else g.connect(A.keyBus);
+    o.start(t);
+    pulseBlock(i, t);
+    return { o: o, g: g };
+  }
+  function releaseKeyNote(voice) {
+    if (!voice) return;
+    var c = A.ctx, t = c.currentTime;
+    voice.g.gain.cancelScheduledValues(t);
+    voice.g.gain.setValueAtTime(voice.g.gain.value, t);
+    voice.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    voice.o.stop(t + 0.3);
+  }
+
   function initKeyboard() {
-    // Espace maintenu : gèle les animations le temps de cliquer un bloc précis
     document.addEventListener('keydown', function (e) {
       if (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true') return;
-      if (e.code !== 'Space') return;
+      if (LIVE_SEL < 0 || keyHeld[e.code]) return;
+      var deg = KEY_ROW.indexOf(e.code);
+      if (deg < 0) return;
       e.preventDefault();
-      setAnimPaused(true);
+      var root = 60 + blockSound(LIVE_SEL).pitch;   // do central + pitch du bloc
+      keyHeld[e.code] = playKeyNote(LIVE_SEL, root + KEY_SCALE[deg]);
     });
     document.addEventListener('keyup', function (e) {
-      if (e.code !== 'Space') return;
-      setAnimPaused(false);
+      if (keyHeld[e.code]) { releaseKeyNote(keyHeld[e.code]); delete keyHeld[e.code]; }
     });
   }
 
@@ -1222,18 +971,6 @@
     var ch = ensureChain(i), c = A.ctx;
     var vol = (volIn != null ? volIn : 0.8) * 0.55;
     var out = ch.gT;
-
-    // PUNCH : saturation intégrée au bloc (même courbe que CRUSH-03), pour muscler
-    // le rythme sans avoir à patcher un module externe. 0 = inaudible (comportement
-    // d'origine), monte en drive avec le potard.
-    var punch = blockSound(i).punch || 0;
-    if (punch > 0) {
-      var psh = c.createWaveShaper();
-      psh.curve = crushCurve(punch);
-      psh.oversample = '2x';
-      psh.connect(out);
-      out = psh;
-    }
 
     if (type === 'kick') {
       // Kick 808 profond : click d'attaque + corps sinus qui plonge très bas + drive
@@ -1377,14 +1114,13 @@
       if (A.ctx) balance();
       return;
     }
-    // Quantification du mute : à la prochaine MESURE (BARLEN temps), la même
-    // grille que le redémarrage des boucles — un couper/lancer tombe donc
-    // toujours à un endroit "structurant" du morceau, pas n'importe quel temps.
-    var barDur = (60 / bpm()) * BARLEN;
-    var bar = Math.floor((A.ctx.currentTime - A.t0) / barDur);
-    if (lastMuteBar == null) { lastMuteBar = bar; return; }
-    if (bar > lastMuteBar) {
-      lastMuteBar = bar;
+    // Quantification du mute : au prochain TEMPS (réactif tout en restant carré).
+    // BARLEN reste la grille du reste ; le mute vise la subdivision la plus proche.
+    var beatDur = 60 / bpm();
+    var beat = Math.floor((A.ctx.currentTime - A.t0) / beatDur);
+    if (lastMuteBar == null) { lastMuteBar = beat; return; }
+    if (beat > lastMuteBar) {
+      lastMuteBar = beat;
       keys.forEach(function (k) {
         var i = +k;
         muteState[i] = mutePending[i];
@@ -1392,34 +1128,6 @@
         refreshMuteBtn(i);
       });
       balance();
-    }
-  }
-
-  // Reconstruit les points du module MESURE (un par temps de la mesure choisie)
-  function renderBarDots() {
-    var host = document.getElementById('sc-bar-dots'); if (!host) return;
-    var html = '';
-    for (var i = 0; i < BARLEN; i++) html += '<span class="sc-bar-dot" data-i="' + i + '"></span>';
-    host.innerHTML = html;
-  }
-
-  // Anime les points en rythme : montre où on en est dans la mesure, et met en
-  // évidence le 1er temps — celui où un mute/démute en attente prend effet.
-  function tickBarDots() {
-    var host = document.getElementById('sc-bar-dots'); if (!host) return;
-    var dots = host.children;
-    if (!A.on || !A.ctx || A.t0 == null) {
-      for (var j = 0; j < dots.length; j++) dots[j].className = 'sc-bar-dot';
-      return;
-    }
-    var beatDur = 60 / bpm();
-    var posInBar = ((A.ctx.currentTime - A.t0) / beatDur) % BARLEN;
-    var curBeat = Math.floor(posInBar);
-    var frac = posInBar - curBeat;
-    for (var k = 0; k < dots.length; k++) {
-      var on = (k === curBeat);
-      dots[k].className = 'sc-bar-dot' + (on ? ' on' : '') +
-        (on && k === 0 && frac < 0.15 ? ' sc-bar-dot-hit' : '');
     }
   }
 
@@ -1473,15 +1181,8 @@
           if (!st.prog.events.length) break;
         }
         var ev = st.prog.events[st.pos++];
-        // Swing : un événement sur deux glisse d'une fraction de sa propre durée
-        var swungT = st.nextT + ((st.pos - 1) % 2 === 1 ? A.swing * ev.dt * beatDur * 0.6 : 0);
-        if (ev.drum) { liveDrum(i, swungT, ev.drum, ev.vol); pulseBlock(i, swungT); }
-        else if (ev.dynPerc) {
-          var perc = PERC_BY_WAVE[blockSound(i).wave] || ['shaker', 'clave', 'rim', 'cow'];
-          liveDrum(i, swungT, perc[(ev.dynPerc - 1) % perc.length], ev.vol);
-          pulseBlock(i, swungT);
-        }
-        else if (ev.midis || ev.pick || ev.midi != null) { liveNote(i, swungT, ev, beatDur); pulseBlock(i, swungT); }
+        if (ev.drum) { liveDrum(i, st.nextT, ev.drum, ev.vol); pulseBlock(i, st.nextT); }
+        else if (ev.midis || ev.pick || ev.midi != null) { liveNote(i, st.nextT, ev, beatDur); pulseBlock(i, st.nextT); }
         st.nextT += ev.dt * beatDur;
       }
     });
@@ -1495,15 +1196,6 @@
     el.setAttribute('contenteditable', 'true');
     el.classList.add('sc-live-edit');
     el.focus();
-    // curseur au tout début du texte, pas où le clic est tombé
-    if (el.firstChild) {
-      var range = document.createRange();
-      range.setStart(el, 0);
-      range.collapse(true);
-      var sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
     var onKey = function (e) {
       e.stopPropagation();
       if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
@@ -1540,7 +1232,7 @@
     var f  = baseF * pitchFactor(cable.from);
     var o1 = c.createOscillator(), o2 = c.createOscillator();
     var gT = c.createGain(), g = c.createGain();
-    applyVoiceWave(o1, o2, cable.from);
+    o1.type = snd.wave; o2.type = 'triangle';
     o1.frequency.value = f; o2.frequency.value = f;
     o1.detune.value = -5; o2.detune.value = 5;
     gT.gain.value = 1; g.gain.value = 0;
@@ -1655,10 +1347,9 @@
   var SEQ = { timer: null, step: 0, next: 0 };
   function bpm() { return 50 + A.rate * 250; }   // 50 → 300 BPM (défaut rate .25 → 112)
 
-  function pluck(time, freq, idx, gainVal, panVal) {
+  function pluck(time, freq, wave, gainVal, panVal) {
     var c = A.ctx, o = c.createOscillator(), g = c.createGain();
-    applyOscWave(o, idx);
-    o.frequency.value = freq;
+    o.type = wave; o.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(gainVal, time + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, time + 0.28);
@@ -1678,13 +1369,6 @@
       scheduleLive();
       var stepDur = 60 / bpm() / 2;
       while (SEQ.next < A.ctx.currentTime + 0.12) {
-        // Swing : un temps sur deux est retardé d'une fraction du pas, la grille
-        // elle-même (SEQ.next) reste régulière — c'est le déclenchement qui glisse.
-        var swungNext = SEQ.next + (SEQ.step % 2 === 1 ? A.swing * stepDur * 0.6 : 0);
-        // Accent : le premier temps de la mesure (grille de MESURE) tape plus
-        // fort, les autres restent en retrait — donne le "pocket" du groove.
-        var stepsPerBar = Math.max(1, BARLEN) * 2;
-        var accentGain = (SEQ.step % stepsPerBar === 0) ? 1 + A.accent * 0.8 : 1 - A.accent * 0.35;
         cables.forEach(function (cb, i) {
           if (isCoded(cb.from)) return;
           if (isMuted(cb.from) || !turnAllows(cb.from)) return;
@@ -1693,8 +1377,8 @@
             var v = A.voices[cb.id];
             var f = v ? v.f * 2 : 220 * pitchFactor(cb.from);
             var n = Math.max(1, Object.keys(A.voices).length);
-            pluck(swungNext, f, cb.from, (0.27 / Math.sqrt(n)) * accentGain, blockPan(cb.from));
-            pulseBlock(cb.from, swungNext);
+            pluck(SEQ.next, f, blockSound(cb.from).wave, 0.27 / Math.sqrt(n), blockPan(cb.from));
+            pulseBlock(cb.from, SEQ.next);
           }
         });
         SEQ.next += stepDur;
@@ -1762,6 +1446,19 @@
     });
   }
 
+  function clickFx(up) {
+    try {
+      var c = actx(), o = c.createOscillator(), g = c.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(up ? 500 : 300, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(up ? 700 : 90, c.currentTime + 0.06);
+      g.gain.setValueAtTime(0.12, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.09);
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime + 0.1);
+    } catch (e) {}
+  }
+
   /* ════════ MODULES (UI) ════════ */
   function knobHtml(key, label) {
     return '<div class="sc-knob-wrap"><div class="sc-knob" data-k="' + key +
@@ -1796,13 +1493,11 @@
       }
     }, { passive: false });
 
-    // Pan : bouton du milieu, bouton droit, ou barre d'espace maintenue + glisser
-    // (comme les outils créatifs). Jamais sur simple clic gauche → n'interfère pas
-    // avec la sélection, le double-clic création, ni le câblage. Le bouton droit
-    // évite l'auto-scroll natif que déclenche parfois le clic molette par erreur.
+    // Pan : bouton du milieu, ou barre d'espace maintenue + glisser (comme les
+    // outils créatifs). Jamais sur simple clic gauche → n'interfère pas avec
+    // la sélection, le double-clic création, ni le câblage.
     var panning = false, armed = false, px = 0, py = 0, px0 = 0, py0 = 0;
     var spaceDown = false;
-    window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     window.addEventListener('keydown', function (e) {
       if (e.code === 'Space' && e.target === document.body) {
         spaceDown = true; document.body.style.cursor = 'grab'; e.preventDefault();
@@ -1812,7 +1507,7 @@
       if (e.code === 'Space') { spaceDown = false; if (!panning) document.body.style.cursor = ''; }
     });
     window.addEventListener('pointerdown', function (e) {
-      if (e.button === 1 || e.button === 2 || (e.button === 0 && spaceDown)) {
+      if (e.button === 1 || (e.button === 0 && spaceDown)) {
         armed = true; px = e.clientX; py = e.clientY; px0 = VIEW.panX; py0 = VIEW.panY;
         e.preventDefault();
       }
@@ -1876,9 +1571,7 @@
       '<div class="sc-sec">' +
         '<button id="sc-synth-resync" title="Recaler toutes les boucles, en douceur">\u21BB RESYNCHRO</button>' +
         '<button id="sc-synth-clean" title="Nettoyer les connexions orphelines ou en double">\u2726 NETTOYER</button>' +
-        '<button id="sc-synth-anim-reset" title="Arr\u00eater toutes les animations et remettre les blocs \u00e0 leur place">\u27f2 RESET ANIMATIONS</button>' +
         '<button id="sc-synth-clear" title="Débrancher tous les câbles">\u2702 DÉBRANCHER TOUT</button>' +
-        '<button id="sc-synth-random" title="Reconstruit tout le câblage au hasard — chaîne, effets, carrefour">⚅ CÂBLAGE ALÉATOIRE</button>' +
       '</div>';
     document.body.appendChild(m);
 
@@ -1903,19 +1596,8 @@
       btn.textContent = n > 0 ? ('\u2726 ' + n + ' retir\u00e9' + (n > 1 ? 's' : '')) : '\u2726 tout est propre';
       setTimeout(function () { btn.textContent = old; }, 1400);
     });
-    document.getElementById('sc-synth-anim-reset').addEventListener('click', function (e) {
-      e.stopPropagation();
-      var n = resetAllAnims();
-      var btn = e.currentTarget;
-      var old = btn.textContent;
-      btn.textContent = n > 0 ? ('⟲ ' + n + ' arrêté' + (n > 1 ? 'es' : 'e')) : '⟲ aucune animation';
-      setTimeout(function () { btn.textContent = old; }, 1400);
-    });
     document.getElementById('sc-synth-clear').addEventListener('click', function (e) {
       e.stopPropagation(); clearAllCables();
-    });
-    document.getElementById('sc-synth-random').addEventListener('click', function (e) {
-      e.stopPropagation(); randomizePatch();
     });
     bindKnob(m.querySelector('.sc-knob[data-k="vol"]'),
       function(){return A.vol;},    function(v){A.vol=v; applyKnobs();});
@@ -1938,6 +1620,7 @@
     { name: 'par tons',      deg: [0, 2, 4, 6, 8, 10] },    // whole tone
     { name: 'phrygien maj',  deg: [0, 1, 4, 5, 7, 8, 10] }  // teinte espagnole
   ];
+  var GEN_WAVES = ['sine', 'tri', 'saw', 'square'];
   var NOTE_LETTERS = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
 
   function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
@@ -1978,8 +1661,13 @@
   // Génère un bloc de code mélodique original
   function genMelody() {
     var scale = pick(GEN_SCALES);
+    var wave = pick(GEN_WAVES);
+    var tempo = 70 + ((Math.random() * 12) | 0) * 8;        // 70..158, pas de 8
     var baseOct = chance(0.5) ? 3 : (chance(0.5) ? 2 : 4);
     var len = pick([6, 8, 8, 12]);                          // longueur du motif
+    var div = pick([1, 2, 2, 4]);                           // finesse rythmique
+    var lines = ['# ' + scale.name, 'tempo ' + tempo, 'wave ' + wave];
+    if (div > 1) lines.push('div ' + div);
 
     // marche mélodique : petits pas dans la gamme, quelques sauts, silences
     var deg = scale.deg, pos = (Math.random() * deg.length) | 0, oct = 0;
@@ -1997,127 +1685,46 @@
       if (chance(0.14)) tok += '+' + noteName(deg[(pos + 2) % deg.length] + oct * 12, baseOct); // accord ponctuel
       toks.push(tok);
     }
-    return 'play ' + toks.join(' ');
+    lines.push('play ' + toks.join(' '));
+    return lines.join('\n');
   }
 
   // Génère un bloc de code rythmique original (euclidien, palette 808)
   function genRhythm() {
-    // bars×4 temps, div subdivisions par temps → steps = beats*div est TOUJOURS
-    // un multiple entier de 4 temps, donc jamais de dérive avec un motif à 1
-    // mesure : ça reste synchro même quand ça dure plus longtemps ou plus finement
-    // subdivisé (triolets compris).
-    var bars = pick([1, 1, 1, 2]);        // surtout 1 mesure, parfois 2 pour une phrase plus longue
-    var beats = bars * 4;
-    var div = pick([2, 4, 4, 3]);         // croches, doubles-croches, ou triolets
-    var steps = beats * div;
-
-    // Voix principale : percussion texturale (pas kick/snare) — c'est elle qui
-    // porte le motif, dans l'esprit exploratoire du reste de l'instrument plutôt
-    // que le réflexe "boîte à rythme". Kick/snare passent en accents rares.
-    // perc1/perc2 : le SON réel n'est pas figé ici — il se résout à la lecture
-    // selon l'onde actuelle du bloc (PERC_BY_WAVE), donc cliquer le bouton
-    // d'onde change vraiment le son entendu, y compris en cours de lecture.
-    var primaryPat   = euclid(3 + ((Math.random() * bars * 3) | 0), steps);
-    var secondaryPat = rotate(euclid(1 + ((Math.random() * bars) | 0), steps),
-                               2 + ((Math.random() * (steps - 2)) | 0));
-
-    // Accents rares : kick ou snare, jamais les deux, jamais l'ossature du motif
-    var hasAccent = chance(0.55);
-    var accentIsKick = chance(0.6);
-    var accentPat = hasAccent
-      ? rotate(euclid(bars, steps), (Math.random() * steps) | 0)
-      : null;
-
-    // Air léger : quelques hat très espacés, jamais systématiques
-    var hasAir = chance(0.4);
-    var airPat = hasAir ? euclid(1 + ((Math.random() * bars) | 0), steps) : null;
-
-    // Basse rare : une pulsation grave et tenue (perc3, vraie note plutôt que
-    // percussion) — pas à chaque mesure, pour ancrer sans alourdir.
-    var hasBass = chance(0.4);
-    var bassPat = hasBass ? rotate(euclid(bars, steps), (Math.random() * steps) | 0) : null;
-
+    var tempo = 84 + ((Math.random() * 10) | 0) * 8;
+    var steps = pick([8, 12, 16, 16]);
+    var div = steps >= 16 ? 4 : (steps >= 12 ? 4 : 2);
+    var kHits = 2 + ((Math.random() * 3) | 0);              // 2..4
+    var sHits = 1 + ((Math.random() * 3) | 0);              // 1..3
+    var kick  = euclid(kHits, steps);
+    var snare = rotate(euclid(sHits, steps), 1 + ((Math.random() * (steps - 1)) | 0));
+    var hats  = euclid(3 + ((Math.random() * 5) | 0), steps);
+    // couche de percussion secondaire, choisie au hasard dans la palette élargie
+    var spice = pick(['clap', 'rim', 'toml', 'cow', 'shaker', 'clave', 'oh']);
+    var spiceHits = euclid(1 + ((Math.random() * 3) | 0), steps);
+    var spiceRot = rotate(spiceHits, 2 + ((Math.random() * (steps - 2)) | 0));
+    // hat fermé/ouvert : parfois un open hat en contretemps
+    var useOpen = chance(0.5);
     var toks = [];
     for (var i = 0; i < steps; i++) {
-      if (accentPat && accentPat[i]) toks.push(accentIsKick ? 'kick' : 'snare');
-      else if (bassPat && bassPat[i]) toks.push('perc3');
-      else if (primaryPat[i] && chance(0.85)) toks.push('perc1');
-      else if (secondaryPat[i] && chance(0.7)) toks.push('perc2');
-      else if (airPat && airPat[i] && chance(0.6)) toks.push('hat');
+      if (kick[i]) toks.push('kick');
+      else if (snare[i]) toks.push('snare');
+      else if (spiceRot[i] && chance(0.8)) toks.push(spice);
+      else if (hats[i] && chance(0.72)) toks.push(useOpen && (i % 4 === 2) ? 'oh' : 'hat');
       else toks.push('.');
     }
-    return ['div ' + div, 'play ' + toks.join(' ')].join('\n');
+    return ['# groove euclidien ' + kHits + '/' + sHits + ' + ' + spice,
+            'tempo ' + tempo, 'div ' + div, 'play ' + toks.join(' ')].join('\n');
   }
 
   function rotate(arr, n) { n = n % arr.length; return arr.slice(n).concat(arr.slice(0, n)); }
 
-  // Génère un bloc de code rythmique "jungle" : un break rapide et cassé, à
-  // l'opposé du rythme texturel par défaut. Deux idées empruntées au genre :
-  // 1. le bloc porte son propre tempo local (commande "tempo"), donc il joue
-  //    en double-vitesse SANS toucher au tempo global de l'instrument — le
-  //    contraste vite/lent qui fait la couleur jungle vient gratuitement.
-  // 2. la caisse claire n'est jamais pile sur le temps : elle est pré-décalée
-  //    d'un cran (grille fine, "div" élevé) pour casser la carrure au lieu
-  //    de la souligner comme un backbeat classique.
-  function genJungle() {
-    var bars = chance(0.75) ? 1 : 2;      // surtout 1 mesure : un break se boucle serré
-    var div  = chance(0.8) ? 4 : 3;       // doubles-croches, parfois triolets
-    var barSteps = 4 * div;
-    var steps = bars * barSteps;
-    var localTempo = 156 + ((Math.random() * 28) | 0);   // 156-184 : feel double-temps
-
-    // Caisse claire posée près des temps 2 et 4 (esprit backbeat) puis
-    // parfois tirée un cran plus tôt — la syncope qui casse le carré.
-    var snarePat = new Array(steps).fill(0);
-    for (var bar = 0; bar < bars; bar++) {
-      [div, div * 3].forEach(function (base) {
-        var pos = (((bar * barSteps + base - (chance(0.4) ? 1 : 0)) % steps) + steps) % steps;
-        snarePat[pos] = 1;
-        if (chance(0.3)) snarePat[(pos + 2) % steps] = 1;   // ghost snare
-      });
-    }
-
-    // Grosse caisse : motif épars, jamais sur la caisse claire (priorité au tri des tokens)
-    var kickPat = euclid(2 + bars, steps);
-
-    // Basse rare, à contretemps de la grosse caisse plutôt que dessus
-    var hasBass = chance(0.5);
-    var bassPat = hasBass ? rotate(euclid(bars, steps), (Math.random() * steps) | 0) : null;
-
-    var toks = [];
-    for (var i = 0; i < steps; i++) {
-      if (snarePat[i])      toks.push(chance(0.25) ? 'clap' : 'snare');
-      else if (kickPat[i])  toks.push('kick');
-      else if (bassPat && bassPat[i]) toks.push('perc3');
-      else if (chance(0.8)) toks.push(chance(0.15) ? 'ohat' : 'hat');   // le hi-hat qui roule
-      else toks.push('.');
-    }
-    return ['tempo ' + localTempo, 'div ' + div, 'play ' + toks.join(' ')].join('\n');
-  }
-
   // Crée un bloc rempli d'un motif généré, au centre de la vue
-  // Palette pastel des blocs générés (couleur → forme d'onde via blockCharacter,
-  // donc la variété de couleur apporte aussi une variété de timbre en prime)
-  var GEN_COLORS = ['#ffd966', '#f5c2d1', '#a8c8f8', '#f8c8a8', '#a8d8a8', '#d8c2f5', '#f5f0a8'];
-
-  // Palette de percussions texturales par forme d'onde — même vocabulaire que
-  // le reste de l'instrument (sine/triangle/sawtooth/square), pour que la
-  // couleur du bloc rythme raconte aussi quel type de son il va utiliser.
-  var PERC_BY_WAVE = {
-    sine:     ['shaker', 'rim'],     // doux, arrondi
-    triangle: ['clave', 'shaker'],   // clair, léger
-    sawtooth: ['cow', 'clave'],      // tranchant
-    square:   ['rim', 'cow']         // sec, carré
-  };
-
   function spawnGenerated(kind) {
-    // La couleur pilote l'onde par défaut du bloc (blockCharacter) — pour un
-    // bloc rythme, cette onde choisit aussi la paire perc1/perc2 à la lecture.
-    var bg = pick(GEN_COLORS);
-    var code = (kind === 'rhythm') ? genRhythm() : (kind === 'jungle') ? genJungle() : genMelody();
+    var code = (kind === 'rhythm') ? genRhythm() : genMelody();
     var cx = window.innerWidth / 2 - 95 + (Math.random() * 120 - 60);
     var cy = window.innerHeight / 2 - 60 + (Math.random() * 120 - 60);
-    var i = createLiveBlock(cx, cy, { code: code, noEdit: true, bg: bg });
+    var i = createLiveBlock(cx, cy, { code: code, noEdit: true });
     // léger flash pour repérer le nouveau bloc
     var b = blocks[i];
     if (b && b.el) {
@@ -2138,7 +1745,6 @@
       '<div class="sc-module-title">GÉNÉRATEUR</div>' +
       '<button id="sc-gen-melo" title="Créer un bloc mélodie">\u266a MÉLODIE</button>' +
       '<button id="sc-gen-ryth" title="Créer un bloc rythme">\u25AC RYTHME</button>' +
-      '<button id="sc-gen-jungle" title="Créer un bloc rythme jungle — break rapide et cassé, tempo local double-vitesse">⚡ JUNGLE</button>' +
       '<div class="sc-gen-hint">un clic = un nouveau bloc</div>';
     document.body.appendChild(gn);
     gn.querySelector('#sc-gen-melo').addEventListener('click', function (e) {
@@ -2147,38 +1753,13 @@
     gn.querySelector('#sc-gen-ryth').addEventListener('click', function (e) {
       e.stopPropagation(); spawnGenerated('rhythm');
     });
-    gn.querySelector('#sc-gen-jungle').addEventListener('click', function (e) {
-      e.stopPropagation(); spawnGenerated('jungle');
-    });
     bindDrag(gn);
-
-    // ── Module IMAGE : charge une image, ses pixels deviennent le timbre ──
-    var im = document.createElement('div');
-    im.className = 'sc-module sc-mini'; im.dataset.mod = 'image';
-    im.style.bottom = '150px'; im.style.right = '960px';
-    im.style.width = '132px';
-    im.innerHTML =
-      '<div class="sc-module-title">IMAGE</div>' +
-      '<input type="file" id="sc-img-file" accept="image/*" style="display:none">' +
-      '<button id="sc-img-load" title="Choisir une image à transformer en son">⬆ CHARGER</button>' +
-      '<div class="sc-gen-hint">les pixels deviennent le timbre</div>';
-    document.body.appendChild(im);
-    var imgInput = im.querySelector('#sc-img-file');
-    im.querySelector('#sc-img-load').addEventListener('click', function (e) {
-      e.stopPropagation(); imgInput.click();
-    });
-    imgInput.addEventListener('change', function () {
-      var file = imgInput.files && imgInput.files[0];
-      if (file) spawnImageBlock(file);
-      imgInput.value = '';
-    });
-    bindDrag(im);
 
     // ── Module CARREFOUR : reçoit des blocs câblés, en tire au hasard ──
     var tn = document.createElement('div');
     tn.className = 'sc-module sc-mini'; tn.dataset.mod = 'carrefour';
     tn.style.bottom = '150px'; tn.style.right = '620px';
-    tn.style.width = '170px';
+    tn.style.width = '150px';
     tn.innerHTML =
       '<div class="sc-module-title">CARREFOUR</div>' +
       '<div class="sc-turn-ins" title="Brancher le OUT d\'un bloc sur une entrée libre">' +
@@ -2191,11 +1772,9 @@
         '<div class="sc-turn-lbl">densit\u00e9</div>' +
         '<div class="sc-turn-dens">' +
           [['rare', 0.15], ['moiti\u00e9', 0.4], ['dense', 0.7]].map(function (d) {
-            return '<button class="sc-turn-dbtn' + (!TURN.auto && Math.abs(TURN.density - d[1]) < 0.03 ? ' on' : '') +
+            return '<button class="sc-turn-dbtn' + (Math.abs(TURN.density - d[1]) < 0.03 ? ' on' : '') +
                    '" data-dens="' + d[1] + '">' + d[0] + '</button>';
           }).join('') +
-          '<button class="sc-turn-dbtn' + (TURN.auto ? ' on' : '') + '" id="sc-turn-auto" ' +
-          'title="la densit\u00e9 d\u00e9rive toute seule, lentement">vivant</button>' +
         '</div>' +
         '<div class="sc-turn-lbl" style="margin-top:5px">vitesse</div>' +
         '<div class="sc-turn-div">' +
@@ -2204,56 +1783,19 @@
                    '" data-div="' + n + '">' + n + '</button>';
           }).join('') +
         '</div>' +
-        '<div class="sc-turn-lbl" style="margin-top:5px">mesure</div>' +
-        '<div class="sc-bar-pick">' +
-          [1, 2, 4, 8].map(function (n) {
-            return '<button class="sc-bar-btn' + (n === BARLEN ? ' on' : '') +
-                   '" data-bar="' + n + '">' + n + '</button>';
-          }).join('') +
-        '</div>' +
-        '<div class="sc-bar-dots" id="sc-bar-dots"></div>' +
-        '<button id="sc-turn-autosync" class="sc-turn-dbtn' + (AUTOSYNC.on ? ' on' : '') + '" ' +
-        'style="width:100%;margin-top:5px" ' +
-        'title="Recale automatiquement la nappe et les blocs codés au début de chaque mesure">auto-calage</button>' +
       '</div>' +
-      '<div class="sc-synth-knobs" style="margin-top:6px">' +
-        knobHtml('swing', 'SWING') + knobHtml('accent', 'ACCENT') +
-      '</div>' +
-      '<button id="sc-turn-fxcut" style="width:100%;margin-top:8px" ' +
-      'title="Débrancher tous les câbles d\'effets (FM/TRM/SUB/ECHO/CRUSH/NOISE/VERB) — garde la nappe intacte, pour une rupture en live">✂ FX</button>' +
       '<div id="sc-turn-members"></div>';
     document.body.appendChild(tn);
     bindTurnJack(tn);
-    bindKnob(tn.querySelector('.sc-knob[data-k="swing"]'),
-      function(){return A.swing;}, function(v){ A.swing = v; });
-    bindKnob(tn.querySelector('.sc-knob[data-k="accent"]'),
-      function(){return A.accent;}, function(v){ A.accent = v; });
-    tn.querySelector('#sc-turn-fxcut').addEventListener('click', function (e) {
-      e.stopPropagation();
-      clearAllFx();
-    });
     // densité (probabilité qu'un fil soit vivant à chaque tirage)
-    var refreshDensityBtns = function () {
-      tn.querySelectorAll('.sc-turn-dbtn[data-dens]').forEach(function (b) {
-        b.classList.toggle('on', !TURN.auto && Math.abs(TURN.density - (+b.dataset.dens)) < 0.03);
-      });
-      var ab = tn.querySelector('#sc-turn-auto');
-      if (ab) ab.classList.toggle('on', TURN.auto);
-    };
-    tn.querySelectorAll('.sc-turn-dbtn[data-dens]').forEach(function (btn) {
+    tn.querySelectorAll('.sc-turn-dbtn').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        TURN.auto = false;
         TURN.density = +btn.dataset.dens;
-        refreshDensityBtns();
+        tn.querySelectorAll('.sc-turn-dbtn').forEach(function (b) {
+          b.classList.toggle('on', b === btn);
+        });
       });
-    });
-    // "vivant" : la densité dérive toute seule au lieu de rester sur un préréglage
-    tn.querySelector('#sc-turn-auto').addEventListener('click', function (e) {
-      e.stopPropagation();
-      TURN.auto = !TURN.auto;
-      if (TURN.auto) TURN.autoT0 = null;   // redémarre le cycle proprement
-      refreshDensityBtns();
     });
     // vitesse (division rythmique du re-tirage)
     tn.querySelectorAll('.sc-turn-vbtn').forEach(function (btn) {
@@ -2265,26 +1807,31 @@
         });
       });
     });
-    // mesure (longueur de la grille de synchro, ex-module MESURE)
-    tn.querySelectorAll('.sc-bar-btn').forEach(function (btn) {
+    bindDrag(tn);
+    // ── Module MESURE : longueur de la grille de synchro (mute, transitions) ──
+    var me = document.createElement('div');
+    me.className = 'sc-module sc-mini'; me.dataset.mod = 'mesure';
+    me.style.bottom = '150px'; me.style.right = '470px';
+    me.innerHTML =
+      '<div class="sc-module-title">MESURE</div>' +
+      '<div class="sc-bar-pick">' +
+        [1, 2, 4, 8].map(function (n) {
+          return '<button class="sc-bar-btn' + (n === BARLEN ? ' on' : '') +
+                 '" data-bar="' + n + '">' + n + '</button>';
+        }).join('') +
+      '</div>' +
+      '<div class="sc-bar-lbl">temps / mesure</div>';
+    document.body.appendChild(me);
+    me.querySelectorAll('.sc-bar-btn').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         BARLEN = +btn.dataset.bar;
-        tn.querySelectorAll('.sc-bar-btn').forEach(function (b) {
+        me.querySelectorAll('.sc-bar-btn').forEach(function (b) {
           b.classList.toggle('on', +b.dataset.bar === BARLEN);
         });
-        renderBarDots();
       });
     });
-    renderBarDots();
-    // auto-calage : recale tout au début de chaque mesure au lieu d'attendre un clic sur RESYNCHRO
-    tn.querySelector('#sc-turn-autosync').addEventListener('click', function (e) {
-      e.stopPropagation();
-      AUTOSYNC.on = !AUTOSYNC.on;
-      AUTOSYNC.lastBar = null;
-      tn.querySelector('#sc-turn-autosync').classList.toggle('on', AUTOSYNC.on);
-    });
-    bindDrag(tn);
+    bindDrag(me);
     // ── Module MORCEAU : partager + aide ──
     var mo = document.createElement('div');
     mo.className = 'sc-module sc-mini'; mo.dataset.mod = 'morceau';
@@ -2302,42 +1849,22 @@
     });
     bindDrag(mo);
 
-    // ── Module FILTRE : CUT, le filtre passe-bas de tout le morceau ──
+    // ── Module FILTRE / LFO : CUT + RATE ──
     var fl = document.createElement('div');
     fl.className = 'sc-module sc-mini'; fl.dataset.mod = 'filtre';
-    fl.style.bottom = '150px'; fl.style.right = '420px';
-    fl.style.width = '80px';
+    fl.style.bottom = '150px'; fl.style.right = '312px';
+    fl.style.width = '150px';
     fl.innerHTML =
-      '<div class="sc-module-title">FILTRE</div>' +
-      '<div class="sc-synth-knobs">' + knobHtml('cutoff', 'CUT') + '</div>';
+      '<div class="sc-module-title">FILTRE / LFO</div>' +
+      '<div class="sc-synth-knobs" style="gap:22px">' +
+        knobHtml('cutoff', 'CUT') + knobHtml('rate', 'RATE') +
+      '</div>';
     document.body.appendChild(fl);
     bindKnob(fl.querySelector('.sc-knob[data-k="cutoff"]'),
       function(){return A.cutoff;}, function(v){A.cutoff=v; applyKnobs();});
+    bindKnob(fl.querySelector('.sc-knob[data-k="rate"]'),
+      function(){return A.rate;},   function(v){A.rate=v; applyKnobs();});
     bindDrag(fl);
-
-    // ── Module TEMPO : vitesse de tout le morceau — potard ou BPM au chiffre ──
-    var tp = document.createElement('div');
-    tp.className = 'sc-module sc-mini'; tp.dataset.mod = 'tempo';
-    tp.style.bottom = '150px'; tp.style.right = '216px';
-    tp.style.width = '110px';
-    tp.innerHTML =
-      '<div class="sc-module-title">TEMPO</div>' +
-      '<div class="sc-synth-knobs">' + knobHtml('rate', 'VITESSE') + '</div>' +
-      '<div class="sc-bpm-row"><input type="number" id="sc-bpm-num" min="50" max="300" step="1"><span>bpm</span></div>';
-    document.body.appendChild(tp);
-    var bpmInput = tp.querySelector('#sc-bpm-num');
-    bpmReadout = bpmInput;
-    bpmInput.value = Math.round(bpm());
-    bindKnob(tp.querySelector('.sc-knob[data-k="rate"]'),
-      function(){return A.rate;},
-      function(v){ A.rate=v; applyKnobs(); bpmInput.value = Math.round(bpm()); });
-    bpmInput.addEventListener('change', function () {
-      var v = Math.min(300, Math.max(50, parseFloat(bpmInput.value) || Math.round(bpm())));
-      A.rate = (v - 50) / 250;
-      applyKnobs();
-      refreshAllKnobs();
-    });
-    bindDrag(tp);
 
     // ── Modules FM / TRM / SUB séparés (colonne à droite) ──
     var MODS = [
@@ -2388,64 +1915,11 @@
     });
   }
 
-  // Rangée de départ, sans chevauchement : calcule le right cumulatif à partir
-  // des largeurs réellement rendues (pas de chiffres à la main à entretenir).
-  // Les modules restent déplaçables ensuite — ceci ne fixe que la disposition
-  // au chargement, avant qu'un morceau partagé ne restaure ses propres positions.
-  function modEl(mod) { return document.querySelector('.sc-module[data-mod="' + mod + '"]'); }
-
-  // Rangée ancrée à GAUCHE (bord gauche de l'écran, croît vers la droite).
-  function layoutLeft(order, bottom, gap) {
-    var left = 14;
-    order.forEach(function (mod) {
-      var el = modEl(mod); if (!el) return;
-      el.style.left = left + 'px'; el.style.right = 'auto'; el.style.bottom = bottom + 'px';
-      left += el.getBoundingClientRect().width + gap;
-    });
-    return left;   // bord droit du groupe, pour caler ce qui vient après
-  }
-
-  // Rangée ancrée à DROITE, justifiée : le dernier de `order` colle au bord
-  // (on pose donc à l'envers pour que l'ordre visuel gauche→droite reste celui demandé).
-  function layoutRight(order, bottom, gap) {
-    var right = 14, maxH = 0;
-    order.slice().reverse().forEach(function (mod) {
-      var el = modEl(mod); if (!el) return;
-      el.style.right = right + 'px'; el.style.left = 'auto'; el.style.bottom = bottom + 'px';
-      var r = el.getBoundingClientRect();
-      maxH = Math.max(maxH, r.height);
-      right += r.width + gap;
-    });
-    return maxH;   // hauteur du groupe, pour caler la rangée au-dessus
-  }
-
-  // Disposition voulue : à gauche le partage / l'image / le générateur ;
-  // à droite (justifié) tempo / filtre / mesure / carrefour, avec au-dessus
-  // une rangée pour tous les filtres et effets. Le transport (SCOTCH-01,
-  // bouton play) est à part : plaqué au bord droit, centré verticalement,
-  // pour rester repérable sans se noyer dans le rack.
-  function layoutRack() {
-    var GAP = 10;
-    layoutLeft(['morceau', 'image', 'generateur'], 56, GAP);   // 56 : dégage les boutons de zoom (bas-gauche)
-    var rightRowH = layoutRight(['tempo', 'filtre', 'carrefour'], 14, GAP);
-    layoutRight(['fx-echo', 'fx-crush', 'fx-noise', 'fx-verb', 'mod-fm', 'mod-trem', 'mod-sub'],
-                14 + rightRowH + GAP, GAP);
-    layoutTransport();
-  }
-
-  function layoutTransport() {
-    var el = modEl('scotch'); if (!el) return;
-    el.style.left = 'auto'; el.style.bottom = 'auto'; el.style.right = '14px';
-    el.style.top = '50%'; el.style.transform = 'translateY(-50%)';
-  }
-
   var KNOBS = [];   // {el, get} — pour resynchroniser l'affichage au chargement d'un patch
-  var bpmReadout = null;   // champ chiffré du module TEMPO, tenu à jour avec le potard
   function refreshAllKnobs() {
     KNOBS.forEach(function (k) {
       k.el.style.transform = 'rotate(' + (k.get() * 270 - 135) + 'deg)';
     });
-    if (bpmReadout) bpmReadout.value = Math.round(bpm());
   }
 
   function bindKnob(el, get, set) {
@@ -2467,13 +1941,6 @@
       el.addEventListener('pointermove', mv);
       el.addEventListener('pointerup', up);
     });
-    // Molette de souris au survol : monte/descend le potard par petits pas
-    el.addEventListener('wheel', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      var step = e.deltaY < 0 ? 0.03 : -0.03;
-      set(Math.min(1, Math.max(0, get() + step)));
-      setRot();
-    }, { passive: false });
   }
 
   function bindModJack(root, fx) {
@@ -2493,7 +1960,6 @@
       hd.setPointerCapture(e.pointerId);
       var r = m.getBoundingClientRect();
       var dx = e.clientX - r.left, dy = e.clientY - r.top;
-      m.style.transform = '';   // un centrage éventuel (ex. transport) ne doit plus décaler après un drag
       m.style.left = r.left + 'px'; m.style.top = r.top + 'px';
       m.style.right = 'auto'; m.style.bottom = 'auto';
       var mv = function (e) {
@@ -2544,9 +2010,12 @@
     var z0 = VIEW.zoom;
     var z1 = Math.min(2.5, Math.max(0.25, z0 * factor));
     if (z1 === z0) return;
-    // le point (cx,cy) écran correspond à un point canvas ; on le garde immobile
-    VIEW.panX = cx - (cx - VIEW.panX) * (z1 / z0);
-    VIEW.panY = cy - (cy - VIEW.panY) * (z1 / z0);
+    // le point (cx,cy) écran correspond à un point canvas ; on le garde immobile.
+    // Origine du canvas à l'écran hors transformation (≠ 0 quand la page est centrée)
+    var cv = document.getElementById('sc-canvas'), ox = 0, oy = 0;
+    if (cv) { var cr = cv.getBoundingClientRect(); ox = cr.left - VIEW.panX; oy = cr.top - VIEW.panY; }
+    VIEW.panX = (cx - ox) - (cx - ox - VIEW.panX) * (z1 / z0);
+    VIEW.panY = (cy - oy) - (cy - oy - VIEW.panY) * (z1 / z0);
     VIEW.zoom = z1;
     applyView();
   }
@@ -2577,10 +2046,9 @@
       updateBlockSound(idx);
       previewBlock(idx);
     });
-    if (!blocks[idx].el.classList.contains('sc-image')) bar.appendChild(wb);   // bloc-image : le timbre vient des pixels
+    bar.appendChild(wb);
 
     [['in', 'entrée'], ['mod0', 'modulation 1'], ['mod1', 'modulation 2'],
-     ['mod2', 'modulation 3'], ['mod3', 'modulation 4'],
      ['out', 'sortie'], ['car', 'carrefour']]
       .forEach(function (def) {
         var h = document.createElement('div');
@@ -2655,39 +2123,11 @@
     });
     bar.appendChild(vk);
 
-    // Potard PUNCH : drive/saturation intégrée aux percussions du bloc
-    // (0 = son d'origine, inutile de patcher CRUSH-03 pour muscler le rythme)
-    var pu = document.createElement('div');
-    pu.className = 'sc-punch';
-    pu.innerHTML = '<div class="sc-punch-mark"></div>';
-    var refreshPunch = function () {
-      var pn = blockSound(idx).punch;
-      pu.style.transform = 'rotate(' + (pn * 270 - 135) + 'deg)';
-      pu.title = 'punch (rythme) : ' + Math.round(pn * 100) + '%';
-    };
-    pu.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      pu.setPointerCapture(e.pointerId);
-      var sy = e.clientY, sp = blockSound(idx).punch;
-      var mv = function (e) {
-        var pn = Math.min(1, Math.max(0, sp + (sy - e.clientY) / 120));
-        blockSound(idx).punch = pn;
-        refreshPunch();
-      };
-      var up = function () {
-        pu.removeEventListener('pointermove', mv);
-        pu.removeEventListener('pointerup', up);
-      };
-      pu.addEventListener('pointermove', mv);
-      pu.addEventListener('pointerup', up);
-    });
-    bar.appendChild(pu);
-
     canvasEl().appendChild(bar);
     blocks[idx].bar = bar;
     blocks[idx].holes = holes;
-    blocks[idx].refreshSndUI = function () { refreshWave(); refreshPitch(); refreshLevel(); refreshPunch(); };
-    refreshWave(); refreshPitch(); refreshLevel(); refreshPunch();
+    blocks[idx].refreshSndUI = function () { refreshWave(); refreshPitch(); refreshLevel(); };
+    refreshWave(); refreshPitch(); refreshLevel();
     placeBar(idx);
 
     // Pastille mute/play au coin haut-gauche du bloc
@@ -2711,19 +2151,17 @@
       var pan = document.createElement('div');
       pan.className = 'sc-anim-panel';
       pan.setAttribute('contenteditable', 'false');
-      // Glyphes plutôt que des mots — même langage visuel que le sélecteur
-      // d'onde (∿△◿⊓) : un symbole évoque le mouvement, le survol donne le nom.
-      var moves = [['off','–'],['derive','↝'],['balancier','⇌'],
-                   ['flottement','↕'],['cercle','↻'],['respiration','◎']];
+      var moves = [['off','—'],['derive','dérive'],['balancier','balancier'],
+                   ['flottement','flottement'],['cercle','cercle'],['respiration','respiration']];
       pan.innerHTML =
+        '<div class="sc-anim-title">animation</div>' +
         '<div class="sc-anim-moves">' +
           moves.map(function (m) {
-            return '<button class="sc-anim-move" data-mv="' + m[0] + '" title="' +
-                   ANIM_LABELS[m[0]] + '">' + m[1] + '</button>';
+            return '<button class="sc-anim-move" data-mv="' + m[0] + '">' + m[1] + '</button>';
           }).join('') +
         '</div>' +
-        '<label class="sc-anim-row" title="vitesse"><span class="sc-anim-ico">⏱</span><input type="range" class="sc-anim-speed" min="2" max="150" value="50"></label>' +
-        '<label class="sc-anim-row" title="ampleur"><span class="sc-anim-ico">⇕</span><input type="range" class="sc-anim-amp" min="20" max="400" value="100"></label>';
+        '<label class="sc-anim-row">vitesse<input type="range" class="sc-anim-speed" min="10" max="150" value="50"></label>' +
+        '<label class="sc-anim-row">ampleur<input type="range" class="sc-anim-amp" min="20" max="250" value="100"></label>';
       b.el.appendChild(pan);
       b.animPanel = pan;
 
@@ -2816,9 +2254,9 @@
   }
 
   function onHoleClick(idx, type) {
-    // ── Trous MOD (mod0..mod3) ──
-    if (type.indexOf('mod') === 0) {
-      var slot = parseInt(type.slice(3), 10);
+    // ── Trous MOD ──
+    if (type === 'mod0' || type === 'mod1') {
+      var slot = type === 'mod1' ? 1 : 0;
       var occ  = modSlotOf(idx, slot);
       if (occ && !pending) {                 // débrancher ce mod-câble (ce bloc seul)
         modCables[occ] = modTargets(occ).filter(function (t) {
@@ -2828,14 +2266,14 @@
           delete modCables[occ];
           document.querySelector('.sc-modjack[data-fx="' + occ + '"]')?.classList.remove('on');
         }
-        rebuildAllFx();
+        clickFx(false); rebuildAllFx();
         return;
       }
       if (pending && pending.mod && !occ) {  // brancher la modulation ici (ajoute à la liste)
         if (!modCables[pending.mod]) modCables[pending.mod] = [];
         modCables[pending.mod].push({ block: idx, slot: slot });
         document.querySelector('.sc-modjack[data-fx="' + pending.mod + '"]')?.classList.add('on');
-        rebuildAllFx();
+        clickFx(true); rebuildAllFx();
         pending = null;
       }
       return;
@@ -2848,6 +2286,7 @@
     if (ci >= 0 && !pending) {
       removeVoice(cables[ci].id);
       cables.splice(ci, 1);
+      clickFx(false);
       return;
     }
     if (!pending) {
@@ -2861,6 +2300,7 @@
         var cable = { id: ++cableId, from: from, to: to,
                       color: COLORS[cables.length % COLORS.length] };
         cables.push(cable);
+        clickFx(true);
         addVoice(cable);
       }
     }
@@ -2874,73 +2314,6 @@
     modCables = {};
     document.querySelectorAll('.sc-modjack.on').forEach(function (el) { el.classList.remove('on'); });
     pending = null;
-    rebuildAllFx();
-    draw();
-  }
-
-  // Débranche uniquement les câbles d'effet (FM/TRM/SUB/ECHO/CRUSH/NOISE/VERB) —
-  // la nappe et les blocs codés continuent de sonner. Pensé pour un "break" en
-  // live : on dépouille le morceau d'un coup, puis on re-patche pour relancer.
-  function clearAllFx() {
-    modCables = {};
-    document.querySelectorAll('.sc-modjack.on').forEach(function (el) { el.classList.remove('on'); });
-    pending = null;
-    rebuildAllFx();
-    draw();
-  }
-
-  // Câblage aléatoire : reconstruit tout le patch d'un coup (chaîne, effets,
-  // carrefour) — remplace l'existant, pour une surprise en live sans avoir à
-  // tout débrancher/rebrancher à la main.
-  function randomizePatch() {
-    // 1. tout débrancher (voix + effets + carrefour)
-    cables.forEach(function (c) { removeVoice(c.id); });
-    cables = [];
-    modCables = {};
-    TURN.members = []; TURN.active = {};
-    document.querySelectorAll('.sc-modjack.on').forEach(function (el) { el.classList.remove('on'); });
-    pending = null;
-
-    var idxs = blocks.map(function (b, i) { return b ? i : null; }).filter(function (i) { return i !== null; });
-    if (!idxs.length) return;
-
-    // 2. chaîne principale : ordre mélangé des blocs existants
-    for (var k = idxs.length - 1; k > 0; k--) {
-      var j = (Math.random() * (k + 1)) | 0;
-      var tmp = idxs[k]; idxs[k] = idxs[j]; idxs[j] = tmp;
-    }
-    for (var k2 = 0; k2 < idxs.length - 1; k2++) {
-      cables.push({ id: ++cableId, from: idxs[k2], to: idxs[k2 + 1], color: COLORS[k2 % COLORS.length] });
-    }
-    if (A.on) cables.forEach(addVoice);
-
-    // 3. quelques modulations éparpillées (un slot = un seul effet à la fois)
-    var occupied = {};
-    ['fm', 'trem', 'sub', 'echo', 'crush', 'noise', 'verb'].forEach(function (fx) {
-      if (Math.random() > 0.45) return;
-      var hits = 1 + ((Math.random() * 2) | 0);
-      for (var h = 0; h < hits; h++) {
-        var tries = 0, block, slot, key;
-        do {
-          block = idxs[(Math.random() * idxs.length) | 0];
-          slot = (Math.random() * 4) | 0;
-          key = block + '-' + slot;
-          tries++;
-        } while (occupied[key] && tries < 10);
-        if (occupied[key]) continue;
-        occupied[key] = true;
-        if (!modCables[fx]) modCables[fx] = [];
-        modCables[fx].push({ block: block, slot: slot });
-      }
-    });
-    document.querySelectorAll('.sc-modjack').forEach(function (el) {
-      el.classList.toggle('on', modTargets(el.dataset.fx).length > 0);
-    });
-
-    // 4. quelques blocs au carrefour
-    var carCount = Math.min(idxs.length, 2 + ((Math.random() * 3) | 0));
-    for (var c2 = 0; c2 < carCount; c2++) addToTurn(idxs[c2]);
-
     rebuildAllFx();
     draw();
   }
@@ -3002,7 +2375,6 @@
     // retirer barrette, poignée, gain, DOM
     var b = blocks[idx];
     if (b) {
-      if (b.imgAnimTimer) clearInterval(b.imgAnimTimer);
       if (b.bar) b.bar.remove();
       if (b.resizer) b.resizer.remove();
       if (b.gainNode) { try { b.gainNode.disconnect(); } catch (e) {} }
@@ -3072,7 +2444,7 @@
         var p1 = modJackScreenPos(fx);
         modTargets(fx).forEach(function (t) {
           if (!blocks[t.block]) return;
-          var p2 = jackPos(t.block, 'mod' + t.slot);
+          var p2 = jackPos(t.block, t.slot === 1 ? 'mod1' : 'mod0');
           if (p1 && p2) out += cablePath(p1.x, p1.y, p2.x, p2.y, FX_COLOR[fx], 0.85, true);
         });
       });
@@ -3086,7 +2458,7 @@
           var pb = jackPos(idx, 'car');
           var on = !!TURN.active[idx];
           if (pb && jackEl) out += cablePath(pb.x, pb.y, pj.x, pj.y,
-                           '#ff8c28', on ? 1 : 0.4, false);
+                           on ? '#ffcf4d' : '#8a7a3a', on ? 1 : 0.4, false);
         });
       }
       if (pending) {
@@ -3117,9 +2489,6 @@
     // Index stable : on repère chaque bloc par son ordre dans `blocks`.
     var blockData = blocks.map(function (b, i) {
       if (!b) return { del: 1 };   // bloc supprimé : placeholder pour garder l'index
-      // bloc-image venu du fichier local du visiteur : pas de contenu à réencoder
-      // dans le lien de partage, on le laisse hors du morceau sauvegardé
-      if (b.isImageSrc) return { del: 1 };
       var cr = canvasEl().getBoundingClientRect();
       var r  = b.el.getBoundingClientRect();
       var snd = b.snd || {};
@@ -3150,7 +2519,7 @@
         });
         return arr;
       })(),
-      k: { vol: A.vol, cut: A.cutoff, rate: A.rate, swing: A.swing, accent: A.accent,
+      k: { vol: A.vol, cut: A.cutoff, rate: A.rate,
            echo: A.mini.echo.val, crush: A.mini.crush.val,
            noise: A.mini.noise.val, verb: A.mini.verb.val },
       mp: (function () {                         // positions des modules du rack
@@ -3190,8 +2559,8 @@
       }),
       c: p.c,
       m: p.m,
-      k: [p.k.vol, p.k.cut, p.k.rate, p.k.echo, p.k.crush, p.k.noise, p.k.verb, p.k.swing, p.k.accent]
-           .map(function (v) { return Math.round((v || 0) * 100); }),
+      k: [p.k.vol, p.k.cut, p.k.rate, p.k.echo, p.k.crush, p.k.noise, p.k.verb]
+           .map(function (v) { return Math.round(v * 100); }),
       mp: p.mp || {},
       ch: p.ch || [],
       tn: p.tn || null
@@ -3222,8 +2591,7 @@
       m: s.m || [],
       k: { vol:(k[0]||60)/100, cut:(k[1]||50)/100, rate:(k[2]||25)/100,
            echo:(k[3]||40)/100, crush:(k[4]||35)/100,
-           noise:(k[5]||50)/100, verb:(k[6]||50)/100,
-           swing:(k[7]||0)/100, accent:(k[8]||0)/100 },
+           noise:(k[5]||50)/100, verb:(k[6]||50)/100 },
       mp: s.mp || {},
       ch: s.ch || [],
       tn: s.tn || null
@@ -3310,7 +2678,6 @@
     // 5. Rétablir les potards.
     if (patch.k) {
       A.vol = patch.k.vol; A.cutoff = patch.k.cut; A.rate = patch.k.rate;
-      A.swing = patch.k.swing || 0; A.accent = patch.k.accent || 0;
       A.mini.echo.val = patch.k.echo; A.mini.crush.val = patch.k.crush;
       A.mini.noise.val = patch.k.noise; A.mini.verb.val = patch.k.verb;
       refreshAllKnobs();
@@ -3391,22 +2758,6 @@
     h.innerHTML =
       '<button id="sc-help-x" title="Fermer">\u2715</button>' +
       '<h4>SCOTCH \u2014 mode d\'emploi</h4>' +
-      '<svg viewBox="0 0 380 95" width="100%" style="margin:4px 0 14px;display:block" role="img" aria-label="Les trous de la barrette : IN, MOD, OUT, CAR">' +
-        '<circle cx="40" cy="24" r="10" fill="#0d0d18" stroke="#55565c" stroke-width="2"/>' +
-        '<text x="40" y="52" text-anchor="middle" fill="#d8d5cc" font-size="10" font-weight="700">IN</text>' +
-        '<text x="40" y="66" text-anchor="middle" fill="#8a8f9c" font-size="7.5">re\u00e7oit un c\u00e2ble</text>' +
-        '<circle cx="150" cy="24" r="10" fill="#0d0d18" stroke="#f0c030" stroke-width="2"/>' +
-        '<text x="150" y="52" text-anchor="middle" fill="#f0c030" font-size="10" font-weight="700">MOD</text>' +
-        '<text x="150" y="66" text-anchor="middle" fill="#8a8f9c" font-size="7.5">re\u00e7oit un effet</text>' +
-        '<text x="150" y="76" text-anchor="middle" fill="#8a8f9c" font-size="7.5">(FM, \u00e9cho, crush\u2026)</text>' +
-        '<circle cx="260" cy="24" r="10" fill="#0d0d18" stroke="#55565c" stroke-width="2"/>' +
-        '<text x="260" y="52" text-anchor="middle" fill="#d8d5cc" font-size="10" font-weight="700">OUT</text>' +
-        '<text x="260" y="66" text-anchor="middle" fill="#8a8f9c" font-size="7.5">fait sonner le bloc</text>' +
-        '<circle cx="340" cy="24" r="10" fill="#0d0d18" stroke="#e08830" stroke-width="2"/>' +
-        '<text x="340" y="52" text-anchor="middle" fill="#e08830" font-size="10" font-weight="700">CAR</text>' +
-        '<text x="340" y="66" text-anchor="middle" fill="#8a8f9c" font-size="7.5">tirage du</text>' +
-        '<text x="340" y="76" text-anchor="middle" fill="#8a8f9c" font-size="7.5">carrefour</text>' +
-      '</svg>' +
       '<p><b>Brancher</b> : clic sur un trou de la barrette d\'un bloc, ' +
       'puis sur un trou d\'un autre. Un bloc sonne quand sa sortie (OUT) est reli\u00e9e. ' +
       'Clic sur un trou occup\u00e9 = d\u00e9brancher.</p>' +
@@ -3423,10 +2774,7 @@
       '<p><b>Percussions</b> (dans <i>play</i>) : <b>kick</b>, <b>snare</b>, ' +
       '<b>hat</b> (ferm\u00e9), <b>oh</b> (ouvert), <b>clap</b>, <b>rim</b>, ' +
       '<b>tomlow/tom/tomhi</b>, <b>cow</b> (cloche), <b>shaker</b>, <b>clave</b>. ' +
-      'Grain analogique 808 \u2014 kick profond. ' +
-      '<b>perc1 / perc2</b> jouent un son textur\u00e9 qui d\u00e9pend de l\'onde du ' +
-      'bloc (change le bouton d\'onde pour changer le son, m\u00eame en cours de ' +
-      'lecture). <b>perc3</b> joue une vraie note grave (une basse).</p>' +
+      'Grain analogique 808 \u2014 kick profond.</p>' +
       '<p><b>Notes</b> : en fran\u00e7ais (do r\u00e9 mi fa sol la si) ou anglais ' +
       '(c d e f g a b), suivies de l\'octave : <i>do3</i>, <i>la4</i>, <i>fa#3</i>, <i>solb2</i>. ' +
       'Ou un num\u00e9ro MIDI (60 = do central).</p>' +
@@ -3441,10 +2789,9 @@
       'Poign\u00e9e jaune = redimensionner. ' +
       'La croix \u2715 (en haut d\'un bloc cr\u00e9\u00e9) le supprime. ' +
       'Le bouton <b>D\u00c9BRANCHER TOUT</b> retire tous les c\u00e2bles d\'un coup.</p>' +
-      '<p><b>\u00c9diter</b> : un clic sur un bloc de texte l\'ouvre directement ' +
-      'en \u00e9dition (curseur au d\u00e9but). Un bloc bouge trop vite pour bien ' +
-      'viser ? Maintiens <b>Espace</b> pour geler toutes les animations le temps ' +
-      'de cliquer, rel\u00e2che pour qu\'elles reprennent.</p>' +
+      '<p><b>Clavier live</b> : clique un bloc pour le s\u00e9lectionner (contour vert), ' +
+      'puis joue au clavier \u2014 rang\u00e9e <b>Q S D F G H J K L</b> = gamme, ' +
+      'dans le son de ce bloc. Fonctionne m\u00eame si le son g\u00e9n\u00e9ral n\'est pas lanc\u00e9.</p>' +
       '<p><b>Animations</b> : le petit rond en bas \u00e0 gauche d\'un bloc ' +
       'lui donne un mouvement lent en boucle (d\u00e9rive, balancier, flottement, ' +
       'cercle, respiration). Clique pour changer. Le bloc bouge tout seul et ' +
@@ -3512,11 +2859,6 @@
     if (!EDIT) {
       var els = collectBlocks();
       blocks = els.map(function (el) { return { el: el }; });
-      blocks.forEach(function (b, i) {
-        if (!b.el.classList.contains('sc-image')) return;
-        setupImageBlock(i);
-        ensureResizer(i);   // coin de redimensionnement : agrandir le GIF à la main
-      });
       blocks.forEach(function (b, i) { makeBar(i); });
       for (var i = 0; i < blocks.length - 1; i++) {
         cables.push({ id: ++cableId, from: i, to: i + 1, color: COLORS[i % COLORS.length] });
@@ -3539,6 +2881,12 @@
       blocks.forEach(function (b, i) {
         refreshBlockCode(i);
         bindBlockDrag(i);
+        if (b.el.classList.contains('sc-bloc')) {
+          b.el.addEventListener('dblclick', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            startLiveEdit(i);
+          });
+        }
       });
       // Double-clic sur le fond : nouveau bloc-module
       document.addEventListener('dblclick', function (e) {
@@ -3552,7 +2900,6 @@
       buildZoomControls();
       buildRackToggle();
       buildMinis();
-      layoutRack();
       initKeyboard();
       // Clic sur le fond : désélectionner (le clavier ne joue plus)
       document.addEventListener('pointerdown', function (e) {
@@ -3566,7 +2913,7 @@
         blocks.forEach(function (b, i) { if (b) updateHalo(i); });
       }, 100);
     }
-    (function loop(now) { draw(); commitPendingMutes(); tickBarDots(); updateAutoDensity(now || 0); tickAutoSync(); advanceTurn(); tickAnims(now || 0); requestAnimationFrame(loop); })();
+    (function loop(now) { draw(); commitPendingMutes(); advanceTurn(); tickAnims(now || 0); requestAnimationFrame(loop); })();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
