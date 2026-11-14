@@ -278,4 +278,4 @@ Scotch doit son principe à [HotGlue](https://hotglue.me), de Gottfried Haider e
 
 ## Licence
 
-*À préciser.*
+Scotch est distribué sous [licence MIT](LICENSE) : tu peux l'utiliser, le modifier et le redistribuer librement, y compris dans un cadre commercial, à condition de conserver la mention de copyright.
