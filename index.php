@@ -266,7 +266,7 @@ $def_font = trim($site['font'] ?? '');
         <?php endforeach ?>
       </select>
       <div class="sc-chk-row">
-        <label><input type="checkbox" id="sc-meta-themejs" <?= $theme_js_on?'checked':'' ?>> Scripts du thème actifs (câbles, synthé…)</label>
+        <label><input type="checkbox" id="sc-meta-themejs" <?= $theme_js_on?'checked':'' ?>> Scripts du thème actifs</label>
       </div>
     </section>
 

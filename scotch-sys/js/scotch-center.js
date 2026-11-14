@@ -1,5 +1,4 @@
-/* Centrage du canvas sur grand écran (thèmes "classiques" — pas modulaire,
-   qui gère sa propre vue via zoom/pan). Les éléments gardent leurs
+/* Centrage du canvas sur grand écran. Les éléments gardent leurs
    coordonnées x/y d'origine ; on décale juste tout le groupe pour que son
    emprise réelle (de son bord gauche à son bord droit) soit centrée dans
    la fenêtre, s'il reste de la place. Rien à configurer par page. */
