@@ -44,27 +44,30 @@ Aucune base de données, aucun `composer install`, aucun `npm install`.
 ### Essai rapide, en local
 
 ```bash
-git clone https://github.com/<ton-compte>/scotch.git
+git clone https://github.com/ThoMateFarCie/scotch.git
 cd scotch
+cp settings.example.php settings.php
 php -S localhost:8000
 ```
 
-Ouvre ensuite `http://localhost:8000/`. C'est tout.
+Ouvre ensuite `http://localhost:8000/`. Au premier lancement, Scotch crée une page d'accueil qui sert de visite guidée.
 
 ### Avec XAMPP, MAMP ou WAMP
 
 1. Copie le dossier `scotch/` dans `htdocs/` (ou `www/`).
-2. Ouvre `http://localhost/scotch/`.
+2. Copie `settings.example.php` en `settings.php`.
+3. Ouvre `http://localhost/scotch/`.
 
 ### Sur un hébergement mutualisé
 
 1. Envoie le dossier par FTP, à la racine du site ou dans un sous-dossier.
-2. Vérifie que le dossier `scotch-data/` est accessible en écriture (voir ci-dessous).
-3. `mod_rewrite` est activé par défaut chez la plupart des hébergeurs.
+2. Copie `settings.example.php` en `settings.php`.
+3. Vérifie que le dossier `scotch-data/` est accessible en écriture (voir ci-dessous).
+4. `mod_rewrite` est activé par défaut chez la plupart des hébergeurs.
 
 ### Les deux réglages indispensables
 
-**1. Change le mot de passe.** Ouvre `settings.php` :
+**1. Crée `settings.php` et change le mot de passe.** Copie `settings.example.php` en `settings.php`, puis modifie :
 
 ```php
 define('SCOTCH_LOGIN', 'admin');
@@ -135,7 +138,7 @@ Un clic sur un élément le sélectionne et fait apparaître sa barre d'outils.
 
 <img src="docs/screenshots/barre-contextuelle.png" alt="Barre contextuelle" width="284">
 
-De gauche à droite : **connexions**, **style**, **position et taille**, **miroir**, puis **dupliquer**, **ordre**, et enfin **verrouiller** et **supprimer**.
+De gauche à droite : **connexions**, **style**, **position et taille**, **miroir**, puis **dupliquer**, **ordre**, et enfin **verrouiller** et **supprimer**. Un bloc vidéo / iframe dispose en plus d'un bouton **recadrer**.
 
 #### Connexions
 
@@ -173,7 +176,7 @@ Le miroir retourne l'élément horizontalement ou verticalement. L'ordre le fait
 
 ### Sélection multiple et alignement
 
-Maintiens **Maj** en cliquant pour sélectionner plusieurs éléments, ou trace un rectangle de sélection sur le fond. La barre propose alors d'aligner les éléments sur un bord ou un axe, et de les répartir à intervalles réguliers.
+Maintiens **Maj** en cliquant pour sélectionner plusieurs éléments, ou trace un rectangle de sélection sur le fond. La barre propose alors d'aligner les éléments sur un bord ou un axe, de les répartir à intervalles réguliers, de les **grouper** pour les déplacer ensemble, ou de les supprimer d'un coup.
 
 ![Barre d'alignement](docs/screenshots/alignement.png)
 
@@ -185,13 +188,19 @@ Il liste les pages du site. Saisis un nom en bas pour en créer une nouvelle ; l
 
 ### Le panneau Réglages
 
-<img src="docs/screenshots/panneau-reglages.png" alt="Panneau Réglages" width="230">
+Il comporte deux onglets.
 
-**Pour la page en cours** : titre, description pour les moteurs de recherche, présence dans la navigation, indexation, thème propre à la page, image de fond et CSS personnalisé.
+<img src="docs/screenshots/panneau-reglages.png" alt="Réglages de la page" width="300"> <img src="docs/screenshots/panneau-reglages-site.png" alt="Réglages du site" width="300">
 
-**Pour le site entier** : thème par défaut, CSS et JavaScript communs à toutes les pages, et une option qui laisse les visiteurs choisir eux-mêmes le thème.
+**Cette page** : titre, description pour les moteurs de recherche, présence dans la navigation, indexation, et la case **Publiée** qui rend la page visible ou non par les visiteurs. On y règle aussi le fond de page (couleur ou image), un thème propre à la page et du CSS personnalisé.
 
-**Polices** : ajoute une police Google Fonts en tapant son nom, ou importe un fichier `.woff2`, `.woff`, `.ttf` ou `.otf`. Elle devient disponible dans le menu Style de tous les blocs.
+**Tout le site** :
+
+- **Polices** : ajoute une police Google Fonts en tapant son nom, ou importe un fichier `.woff2`, `.woff`, `.ttf` ou `.otf`. Elle devient disponible sur toutes les pages, et peut servir de police par défaut.
+- **Couleurs** : compose la palette proposée dans les menus, et limite au besoin le choix à cette palette.
+- **Thème et mise en page** : thème par défaut du site, centrage de la composition sur grand écran, et option qui laisse les visiteurs choisir eux-mêmes le thème.
+- **CSS et JS globaux**, communs à toutes les pages.
+- **Éditeur** : enregistrement automatique toutes les dix minutes.
 
 ### Le panneau Animations
 
@@ -207,21 +216,11 @@ Sur un écran étroit, la mise en page libre devient une colonne : les élément
 
 ## Thèmes
 
-Un thème change l'allure de tout le site sans toucher au contenu. Six thèmes graphiques sont fournis.
+Un thème change l'allure de tout le site sans toucher au contenu. Six thèmes sont fournis.
 
-![Les six thèmes graphiques](docs/screenshots/themes.png)
+![Les six thèmes](docs/screenshots/themes.png)
 
 Un thème se choisit dans le panneau Réglages, pour le site entier ou pour une seule page. Chaque thème est un simple fichier CSS dans `scotch-sys/themes/`. Pour en créer un, dépose-y un nouveau fichier `.css` : il apparaît aussitôt dans la liste. Un fichier `.js` du même nom, s'il existe, est chargé avec lui.
-
-### Le thème « modulaire » : un instrument de musique
-
-Le septième thème transforme la page en **synthétiseur modulaire et en instrument de live coding**. Chaque bloc devient un module sonore : on y écrit quelques lignes (`tempo 120`, `play do3 mi3 sol3`…), on relie les blocs avec des câbles, et la page joue. Tout le son est synthétisé dans le navigateur (WebAudio), sans aucun fichier audio.
-
-![Le thème modulaire](docs/screenshots/theme-modulaire.png)
-
-Il comprend un séquenceur, des percussions analogiques, des effets (écho, réverbe, saturation…), un générateur de mélodies et de rythmes, des animations de blocs qui modulent le son, et le partage d'un morceau par simple lien.
-
-→ Le mode d'emploi complet se trouve dans [docs/live-coding.md](docs/live-coding.md).
 
 ## Raccourcis clavier
 
@@ -231,10 +230,11 @@ Il comprend un séquenceur, des percussions analogiques, des effets (écho, rév
 | `Ctrl+Z` | Annuler |
 | `Ctrl+Y` ou `Ctrl+Maj+Z` | Rétablir |
 | `Ctrl+A` | Tout sélectionner |
+| `Ctrl+G` / `Ctrl+Maj+G` | Grouper / dégrouper la sélection |
 | `G` | Grille magnétique |
 | `M` | Aperçu mobile |
 | `Échap` | Désélectionner |
-| `Suppr` | Supprimer l'élément sélectionné |
+| `Suppr` | Supprimer la sélection |
 | `↑ ↓ ← →` | Déplacer d'un pixel |
 | `Maj + ↑ ↓ ← →` | Déplacer de dix pixels |
 | Double-clic sur le fond | Créer un élément |
@@ -245,11 +245,11 @@ Il comprend un séquenceur, des percussions analogiques, des effets (écho, rév
 
 ```
 scotch/
-├── settings.php          ← identifiants et configuration
+├── settings.example.php  ← modèle de configuration, à copier en settings.php
 ├── index.php             ← routeur et affichage des pages
 ├── api.php               ← API utilisée par l'éditeur
 ├── .htaccess             ← adresses propres, protection des données
-├── scotch-data/          ← TON CONTENU (à sauvegarder)
+├── scotch-data/          ← TON CONTENU (à sauvegarder, non versionné)
 │   ├── _site.json        ← réglages du site
 │   ├── _global.json      ← blocs présents sur toutes les pages
 │   ├── _fonts/           ← polices importées
@@ -258,15 +258,16 @@ scotch/
 │       └── files/        ← images et fichiers de cette page
 └── scotch-sys/           ← le moteur (inutile d'y toucher)
     ├── css/  js/  pages/
+    ├── starter/          ← page d'accueil créée au premier lancement
     ├── themes/           ← un fichier .css par thème
     └── ui/               ← pictogrammes de l'éditeur
 ```
 
-Tout le contenu du site tient dans `scotch-data/`. Pour sauvegarder ou déménager un site, il suffit de copier ce dossier.
+Tout le contenu du site tient dans `scotch-data/`. Pour sauvegarder ou déménager un site, il suffit de copier ce dossier. Il est exclu du dépôt Git, tout comme `settings.php` : ton contenu et ton mot de passe restent chez toi.
 
 ## Sécurité et mise en production
 
-- **Change le mot de passe** de `settings.php` avant toute mise en ligne, et ne publie jamais ton vrai mot de passe dans un dépôt public.
+- **Change le mot de passe** de `settings.php` avant toute mise en ligne.
 - Passe `SCOTCH_DEBUG` à `false` dans `settings.php` pour ne plus afficher les erreurs PHP.
 - Le `.htaccess` interdit la lecture directe des fichiers `.json`. Avec un autre serveur qu'Apache (nginx, Caddy…), cette règle est à reproduire dans sa configuration.
 - Scotch est pensé pour **une seule personne ou une petite équipe de confiance** : il n'y a qu'un compte, sans gestion de rôles.
